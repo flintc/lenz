@@ -1,8 +1,8 @@
-from helpers import is_dict_like, is_list_like, always, arityn
+from lenz.helpers import is_dict_like, is_list_like, always, arityn
 from functools import reduce, partial
-import algebras as A
+import lenz.algebras as A
 from copy import deepcopy
-from contract import nth_arg
+from lenz.contract import nth_arg
 
 
 def lens_from(get, set):
