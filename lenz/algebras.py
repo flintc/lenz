@@ -1,5 +1,5 @@
 
-from helpers import always, snd_u
+from lenz.helpers import always, snd_u
 
 
 class Applicative:
