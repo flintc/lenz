@@ -8,6 +8,10 @@ from abc import ABCMeta
 class ListLike(metaclass=ABCMeta):
     pass
 
+class DictLike(metaclass=ABCMeta):
+    pass
+
+DictLike.register(dict)
 
 def arityn(n):
     def decorator(fn):
@@ -54,7 +58,7 @@ def is_list_like(x):
 
 
 def is_dict_like(x):
-    return isinstance(x, dict) or (hasattr(x, 'keys') and hasattr(x, 'values') and hasattr(x, 'items') and callable(x.values))
+    return isinstance(x, DictLike) or (hasattr(x, 'keys') and hasattr(x, 'values') and hasattr(x, 'items') and callable(x.values))
 
 
 def to_list_like(x):
