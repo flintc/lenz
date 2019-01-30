@@ -3,6 +3,18 @@ from functools import reduce, partial
 import lenz.algebras as A
 from copy import deepcopy
 from lenz.contract import nth_arg
+import logging
+import sys
+
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+
+handler = logging.StreamHandler(sys.stdout)
+handler.setLevel(logging.NOTSET)
+formatter = logging.Formatter('%(name)-12s: %(levelname)-10s %(message)s')
+handler.setFormatter(formatter)
+logger.addHandler(handler)
 
 
 def lens_from(get, set):
@@ -23,7 +35,6 @@ def get_prop(k, o):
 
 
 def set_prop(k, v, o):
-    #print('set_prop', k, v, o)
     on = deepcopy(o)
     on[k] = v
     return on
@@ -34,7 +45,6 @@ fun_prop = lens_from(get_prop, set_prop)
 
 def get_index(i, xs):
     if is_list_like(xs):
-        #print(i, xs)
         return xs[i]
     return None
 
@@ -51,12 +61,12 @@ def composed_middle(o, r):
 
 
 def identity(x, i, _F, xi2yF):
+   #print('identity', x, i, _F, xi2yF)
     return xi2yF(x, i)
 
 
 def from_reader(wi2x):
     def wrapper(w, i, F, xi2yF):
-        #print('from_reader', wi2x, w, i, F, xi2yF)
         return F.map(
             always(w),
             xi2yF(wi2x(w, i), i)
@@ -71,20 +81,25 @@ def to_function(o):
         return fun_index(o)
     if is_list_like(o):
         return composed(0, o)
-    #print('to_function', o, o.length if hasattr(o, 'length') else 'no length')
     # return o  # if (hasattr(o, '__len__') and len(o) == 4) else from_reader(o)
     return o if (hasattr(o, 'length') and o.length == 4) else from_reader(o)
 
 
 def composed(oi0, os):
     n = len(os) - oi0
+    logger.debug(
+        '[{}] - len(os): {} - oi0: {}'.format('composed', len(os), oi0))
+   #print('[composed] - ', oi0, os, n)
     if n < 2:
+        # if n==1 and oi0==1:
+        #    return identity
         if n != 0:
             return to_function(os[oi0])
         return identity
     else:
         n -= 1
         last = to_function(os[oi0+n])
+       #print('here', oi0, n, os[oi0+n], last)
 
         def r(F, xi2yF): return lambda x, i: last(x, i, F, xi2yF)
         n -= 1
@@ -96,9 +111,12 @@ def composed(oi0, os):
 
 
 def modify_composed(os, xi2y, x, y=None):
-    #print('enter modify composed', os, xi2y, x, y)
     n = len(os)
+    logger.debug('[{}] - len(os): {}'.format('modify_composed', len(os)))
     xs = []
+    # TODO: find permanent solution for when optic is empty list: []
+    if n == 0:
+        return xi2y(x)
     for i in range(len(os)):
         xs.append(x)
         if isinstance(os[i], str):
@@ -106,22 +124,20 @@ def modify_composed(os, xi2y, x, y=None):
         elif isinstance(os[i], int):
             x = get_index(os[i], x)
         else:
-            #print('modify composed, else', xi2y, y)
+           #print('[modify_composed] - else - xi2y, y', xi2y, y)
             x = composed(i, os)(x, os[i-1], A.Identity, xi2y or always(y))
-            #print('n before, i', n, i)
             #n = n-3 if n-i == 2 else i
             n = i
-            #print('n after, i', n, i)
     if (n == len(os)):
-        #print('modify composed n==len(os)', xi2y, x, os[n-1], y)
+       #print('[modify_composed] - n==len(os) -', xi2y, x, os[n-1], y)
         x = xi2y(x, os[n-1]) if xi2y else y
-    # print('modify composed xs', xs)
-    # print('modify composed x', x)
-    # print('modify composed os', os)
-    # print('modify composed n', n)
     n -= 1
     while 0 <= n:
-        #print('modify comnposed while', n, x, xs[n], os[n])
+       #print('[modify_comnposed] - while -', n, x, xs[n], os[n])
+        if callable(os[n]):  # and os[n].__name__ in ['elems', 'subseq_u']:
+           #print('[TMP FIX] - continue if callable(optic)')
+            n -= 1
+            continue
         x = set_prop(os[n], x, xs[n]) if isinstance(
             os[n], str) else set_index(os[n], x, xs[n])
         n -= 1
@@ -129,10 +145,9 @@ def modify_composed(os, xi2y, x, y=None):
 
 
 def modify_u(o, xi2x, s):
-    #print('modify_u', o, xi2x, s)
+    logger.debug('Test message')
     xi2x = nth_arg(0, xi2x)
     if isinstance(o, str):
-        #print(o, xi2x, s)
         return set_prop(o, xi2x(get_prop(o, s), o), s)
     if isinstance(o, int):
         return set_index(o, xi2x(get_index(o, s), o), s)
@@ -154,8 +169,8 @@ def set_u(o, x, s):
     return o(s, None, A.Identity, x)
 
 
-def id(x, y):
-    #print('id', x, y)
+def id(x, *algebras):
+   #print('id', x, algebras)
     return x
 
 
@@ -165,14 +180,14 @@ def transform(o, s):
 
 
 def modify_op(xi2y):
-    def wrapper(x, i, C=A.Identity, _xi2yC=None):
-        #print('modify_op wrapper', x, i, C, _xi2yC)
-        #print('modify_op', x, i, C)
-        if i == elems:
-            print('elems?', A.Constant.map(xi2y, x), _xi2yC)
-            # return C.of(_xi2yC(x, i))
-        return C.of(nth_arg(0, xi2y)(x, i))
+    def wrapper(x, i, C, _xi2yC=None):
+       #print('[modify_op({})] - '.format(xi2y.__name__), x, i, C, _xi2yC)
+        result = C.of(xi2y(x)) if isinstance(x, int) else x
+       #print('[modify_op({}) - result -'.format(xi2y.__name__), result)
+        return result  # if isinstance(x, int) else 'b'
+
     wrapper.length = 4
+    wrapper.__name__ = 'modify_op({})'.format(xi2y.__name__)
     return wrapper
 
 
@@ -191,6 +206,10 @@ def get_as_u(xi2y, l, s):
         return xi2y(get_index(l, s), l)
     if is_list_like(l):
         n = len(l)
+        logger.debug('[{}] - l: {} - s: {}'.format('get_as_us', l, s))
+        # TODO: find permanent solution for when optic is empty list: []
+        if n == 0:
+            return s
         for i in range(0, n):
             if isinstance(l[i], str):
                 s = get_prop(l[i], s)
@@ -199,12 +218,11 @@ def get_as_u(xi2y, l, s):
             else:
                 return composed(i, l)(s, l[i-1], A.Select, xi2y)
         return xi2y(s, l[n-1])
-    #print(xi2y, xi2y == id)
     if xi2y is not id and (l.length != 4 if hasattr(l, 'length') else False):
-        #print('get_as_u if', l)
+       #print('get_as_u if', l)
         return xi2y(l(s, None), None)
     else:
-        #print('get_as_u else', l)
+       #print('get_as_u else', l)
         return l(s, None, A.Select, xi2y)
 
 
@@ -237,16 +255,13 @@ def subseq_u(begin, end, t):
 
     def wrapper(x, i, F, xi2yF):
         n = -1
-        #print('subseq_u', x, i, F, xi2yF)
 
         def inner(x, i):
             nonlocal n
             n += 1
             if begin <= n and not (end <= n):
-                #print('subseq u wrapper.inner if')
                 return xi2yF(x, i)
             else:
-                #print('subseq u wrapper.inner else')
                 return F.of(x)
         return t(x, i, F, inner)
     wrapper.length = 4
@@ -255,7 +270,6 @@ def subseq_u(begin, end, t):
 
 
 def elems(xs, _i, A, xi2yA):
-    #print('elems', _i, A, xs, xi2yA)
     result = reduce(
         lambda ysF, x: A.ap(
             A.map(
@@ -263,21 +277,21 @@ def elems(xs, _i, A, xi2yA):
             xi2yA(x, xs)),
         xs,
         A.of([]))
-    #print('elems result', result)
     return result
 
 
 def get_values(ys):
-    print('get_values', ys)
+   #print('get_values', ys)
     return ys.values()
 
 
 def values_helper(ys, y, ysF, x):
-    print(ys, y, ysF, x)
+   #print(ys, y, ysF, x)
+    pass
 
 
 def values(xs, _i, A, xi2yA):
-    print('values', _i, A, xs, xi2yA)
+   #print('values', _i, A, xs, xi2yA)
     result = reduce(
         lambda ysF, x: A.ap(
             A.map(
@@ -285,7 +299,6 @@ def values(xs, _i, A, xi2yA):
             xi2yA(x, xs)),
         xs.items(),
         A.of(dict()))
-    #print('elems result', result)
     return result
 
 
@@ -299,13 +312,13 @@ def collect_as(xi2y, t, s):
 
     def as_fn(x, i):
         y = xi2y(x, i)
-        print(x, i, y, t)
+       #print(x, i, y, t)
         if y is not None:
             results.append(y)
     get_as_u(
         as_fn,
         t, s)
-    print('results', results)
+   #print('results', results)
     return results
 
 

@@ -8,10 +8,13 @@ from abc import ABCMeta
 class ListLike(metaclass=ABCMeta):
     pass
 
+
 class DictLike(metaclass=ABCMeta):
     pass
 
+
 DictLike.register(dict)
+
 
 def arityn(n):
     def decorator(fn):
