@@ -311,7 +311,7 @@ def collect_as(xi2y, t, s):
     results = []
 
     def as_fn(x, i):
-        y = xi2x = nth_arg(0, xi2x)(x, i)
+        y = nth_arg(0, xi2y)(x, i)
        #print(x, i, y, t)
         if y is not None:
             results.append(y)
