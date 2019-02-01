@@ -8,10 +8,10 @@ import sys
 
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.CRITICAL)
 
 handler = logging.StreamHandler(sys.stdout)
-handler.setLevel(logging.NOTSET)
+handler.setLevel(logging.CRITICAL)
 formatter = logging.Formatter('%(name)-12s: %(levelname)-10s %(message)s')
 handler.setFormatter(formatter)
 logger.addHandler(handler)
