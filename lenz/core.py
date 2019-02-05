@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.CRITICAL+1)
 
 handler = logging.StreamHandler(sys.stdout)
-handler.setLevel(logging.NOTSET)
+handler.setLevel(logging.CRITICAL)
 formatter = logging.Formatter('%(name)-12s: %(levelname)-10s %(message)s')
 handler.setFormatter(formatter)
 logger.addHandler(handler)
@@ -303,7 +303,7 @@ def collect_as(xi2y, t, s):
     results = []
 
     def as_fn(x, i):
-        y = xi2y(x, i)
+        y = nth_arg(0, xi2y)(x, i)
        #print(x, i, y, t)
         if y is not None:
             results.append(y)
