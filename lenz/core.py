@@ -1,14 +1,15 @@
-from lenz.helpers import is_dict_like, is_list_like, always, arityn
+from lenz.helpers import is_dict_like, is_list_like, always, arityn, freeze, assign, protoless0
 from functools import reduce, partial
 import lenz.algebras as A
-from copy import deepcopy
+import lenz.algebras as I
+from copy import deepcopy, copy
 from lenz.contract import nth_arg
 import logging
 import sys
 
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.CRITICAL+1)
 
 handler = logging.StreamHandler(sys.stdout)
 handler.setLevel(logging.NOTSET)
@@ -18,20 +19,26 @@ logger.addHandler(handler)
 
 
 def lens_from(get, set):
-    def wrapper(i):
-        def inner(x, _i, F, xi2yF):
+    def lens_from_inner(i):
+        def lens_from_wrapper(x, _i, F, xi2yF):
             return F.map(
                 lambda v: set(i, v, x),
                 xi2yF(get(i, x), i)
             )
-        return inner
-    return wrapper
+        lens_from_wrapper.length = 4
+        return lens_from_wrapper
+    return lens_from_inner
 
 
 def get_prop(k, o):
     if is_dict_like(o):
         return o[k]
     return None
+
+
+def safe_prop(k, o):
+    if is_dict_like(o):
+        return o[k] if k in o.keys() else None
 
 
 def set_prop(k, v, o):
@@ -44,6 +51,7 @@ fun_prop = lens_from(get_prop, set_prop)
 
 
 def get_index(i, xs):
+    logger.critical('[get_index] - {}, {}'.format(i, xs))
     if is_list_like(xs):
         return xs[i]
     return None
@@ -65,13 +73,17 @@ def identity(x, i, _F, xi2yF):
     return xi2yF(x, i)
 
 
+identity.length = 4
+
+
 def from_reader(wi2x):
-    def wrapper(w, i, F, xi2yF):
+    def from_reader_wrapper(w, i, F, xi2yF):
         return F.map(
             always(w),
             xi2yF(wi2x(w, i), i)
         )
-    return wrapper
+    from_reader_wrapper.length = 4
+    return from_reader_wrapper
 
 
 def to_function(o):
@@ -82,6 +94,8 @@ def to_function(o):
     if is_list_like(o):
         return composed(0, o)
     # return o  # if (hasattr(o, '__len__') and len(o) == 4) else from_reader(o)
+    logger.critical('[to_function] - {}, {}'.format(o,
+                                                    hasattr(o, 'length') and o.length == 4))
     return o if (hasattr(o, 'length') and o.length == 4) else from_reader(o)
 
 
@@ -107,16 +121,17 @@ def composed(oi0, os):
             r = composed_middle(to_function(os[oi0+n]), r)
             n -= 1
         first = to_function(os[oi0])
-        return lambda x, i, F, xi2yF: first(x, i, F, r(F, xi2yF))
+
+        def composed_wrapper(x, i, F, xi2yF):
+            return first(x, i, F, r(F, xi2yF))
+        composed_wrapper.length = 4
+        return composed_wrapper
 
 
 def modify_composed(os, xi2y, x, y=None):
     n = len(os)
     logger.debug('[{}] - len(os): {}'.format('modify_composed', len(os)))
     xs = []
-    # TODO: find permanent solution for when optic is empty list: []
-    if n == 0:
-        return xi2y(x)
     for i in range(len(os)):
         xs.append(x)
         if isinstance(os[i], str):
@@ -125,7 +140,8 @@ def modify_composed(os, xi2y, x, y=None):
             x = get_index(os[i], x)
         else:
            #print('[modify_composed] - else - xi2y, y', xi2y, y)
-            x = composed(i, os)(x, os[i-1], A.Identity, xi2y or always(y))
+            x = composed(i, os)(
+                x, os[i-1] if len(os) >= (i-1) else None, A.Identity, xi2y or always(y))
             #n = n-3 if n-i == 2 else i
             n = i
     if (n == len(os)):
@@ -180,15 +196,14 @@ def transform(o, s):
 
 
 def modify_op(xi2y):
-    def wrapper(x, i, C, _xi2yC=None):
-       #print('[modify_op({})] - '.format(xi2y.__name__), x, i, C, _xi2yC)
-        result = C.of(xi2y(x)) if isinstance(x, int) else x
-       #print('[modify_op({}) - result -'.format(xi2y.__name__), result)
-        return result  # if isinstance(x, int) else 'b'
-
-    wrapper.length = 4
-    wrapper.__name__ = 'modify_op({})'.format(xi2y.__name__)
-    return wrapper
+    def modify_op_wrapper(x, i, C, _xi2yC=None):
+        logger.debug(
+            '[modify_op({}) - x: {}, i: {}, C: {}'.format(xi2y.__name__, x, i, C))
+        result = C.of(xi2y(x))
+        return result
+    modify_op_wrapper.length = 4
+    modify_op_wrapper.__name__ = 'modify_op({})'.format(xi2y.__name__)
+    return modify_op_wrapper
 
 
 def set_pick(template, value, x):
@@ -207,22 +222,21 @@ def get_as_u(xi2y, l, s):
     if is_list_like(l):
         n = len(l)
         logger.debug('[{}] - l: {} - s: {}'.format('get_as_us', l, s))
-        # TODO: find permanent solution for when optic is empty list: []
-        if n == 0:
-            return s
         for i in range(0, n):
             if isinstance(l[i], str):
                 s = get_prop(l[i], s)
             elif isinstance(l[i], int):
                 s = get_index(l[i], s)
             else:
-                return composed(i, l)(s, l[i-1], A.Select, xi2y)
-        return xi2y(s, l[n-1])
+                return composed(i, l)(s, l[i-1] if len(l) >= (i-1) else None, A.Select, xi2y)
+        return xi2y(s, l[n-1] if len(l) >= (n-1) and n > 0 else None)
     if xi2y is not id and (l.length != 4 if hasattr(l, 'length') else False):
        #print('get_as_u if', l)
+        logger.critical('[get_as_u] if - {}'.format(l))
         return xi2y(l(s, None), None)
     else:
        #print('get_as_u else', l)
+        logger.critical('[get_as_u] else - {}'.format(l))
         return l(s, None, A.Select, xi2y)
 
 
@@ -242,18 +256,19 @@ def get_pick(template, x):
 
 
 def pick(template):
-    def wrapper(x, i, F, xi2yF):
+    def pick_wrapper(x, i, F, xi2yF):
         return F.map(
             lambda v: set_pick(template, v, x),
             xi2yF(get_pick(template, x), i)
         )
-    return wrapper
+    pick_wrapper.length = 4
+    return pick_wrapper
 
 
 def subseq_u(begin, end, t):
     t = to_function(t)
 
-    def wrapper(x, i, F, xi2yF):
+    def subseq_u_wrapper(x, i, F, xi2yF):
         n = -1
 
         def inner(x, i):
@@ -264,9 +279,9 @@ def subseq_u(begin, end, t):
             else:
                 return F.of(x)
         return t(x, i, F, inner)
-    wrapper.length = 4
-    wrapper.__name__ = 'subseq_u<wrapper>'
-    return wrapper
+    subseq_u_wrapper.length = 4
+    subseq_u_wrapper.__name__ = 'subseq_u<wrapper>'
+    return subseq_u_wrapper
 
 
 def elems(xs, _i, A, xi2yA):
@@ -280,30 +295,7 @@ def elems(xs, _i, A, xi2yA):
     return result
 
 
-def get_values(ys):
-   #print('get_values', ys)
-    return ys.values()
-
-
-def values_helper(ys, y, ysF, x):
-   #print(ys, y, ysF, x)
-    pass
-
-
-def values(xs, _i, A, xi2yA):
-   #print('values', _i, A, xs, xi2yA)
-    result = reduce(
-        lambda ysF, x: A.ap(
-            A.map(
-                lambda ys: lambda y: values_helper(ys, y, ysF, x), ysF),
-            xi2yA(x, xs)),
-        xs.items(),
-        A.of(dict()))
-    return result
-
-
 elems.length = 4
-values.length = 4
 
 
 @arityn(3)
@@ -325,3 +317,251 @@ def collect_as(xi2y, t, s):
 collect = collect_as(id)
 modify = arityn(3)(modify_u)
 get = arityn(2)(get_u)
+
+
+def find_index_hint(hint, xi2b, xs):
+    u = safe_prop('hint', hint)
+    n = len(xs)
+    d = u-1
+    if n <= u:
+        u = n-1
+    if d < 0:
+        u = 0
+    while 0 <= d and u < n:
+        if xi2b(xs[u], u, hint):
+            return u
+        if xi2b(xs[d], d, hint):
+            return d
+        u += 1
+        d -= 1
+    while u < n:
+        if xi2b(xs[u], u, hint):
+            return u
+        u += 1
+    while 0 <= d:
+        if xi2b(xs[d], d, hint):
+            return d
+        d -= 1
+    return n
+
+
+def find(xih2b, hint={'hint': 0}):
+    xih2b = nth_arg(0, xih2b)
+
+    def find_wrapper(xs, _i, F, xi2yF):
+        logger.critical('[find_wrapper] - {}, {}'.format(xs, is_list_like(xs)))
+        ys = xs if is_list_like(xs) else ''
+        hint['hint'] = find_index_hint(hint, xih2b, ys)
+        i = hint['hint']
+        return F.map(lambda v: set_index(i, v, ys), xi2yF(ys[i], i))
+    find_wrapper.length = 4
+    return find_wrapper
+
+
+def satisfying(p):
+    def satisfying_wrapper(x, i, C, xi2yC):
+        def rec(x, i):
+            if nth_arg(0, p)(x, i):
+                return xi2yC(x, i)
+            return children(x, i, C, rec)
+        return rec(x, i)
+    satisfying_wrapper.length = 4
+    return satisfying_wrapper
+
+
+leafs = satisfying(lambda x, *args: x is not None and not is_list_like(
+    x) and not is_dict_like(x))
+
+
+@arityn(3)
+def all(xi2b, t, s):
+    return not get_as_u(lambda x, i: True if not nth_arg(0, xi2b)(x, i) else None, t, s)
+
+
+def iso_u(bwd, fwd):
+    # @arityn(4)
+    def iso_u_wrapper(x, i, F, xi2yF):
+        return F.map(fwd, xi2yF(bwd(x), i))
+    iso_u_wrapper.length = 4
+    return iso_u_wrapper
+
+
+def _compare(x, y):
+    logger.critical('[_compare] - {} == {} ? {}'.format(x, y, x == y))
+    return x == y
+
+
+def is_(v):
+    logger.critical('[is_] - {}'.format(v))
+    return iso_u(lambda x: _compare(x, v), lambda b: v if b is True else None)
+
+
+and_ = all(id)
+
+
+def where_eq(template): return satisfying(
+    and_(branch(modify(leafs, is_, template))))
+
+
+def to_object(x):
+    return assign({}, x)
+
+
+def cpair(xs):
+    return lambda x: [x, xs]
+
+
+def branch_assemble(ks):
+    def branch_assemble_inner(xs):
+        r = dict()
+        i = len(ks)
+        while i:
+            v = xs[0]
+            if v is not None:
+                r[ks[i]] = v
+            xs = xs[1]
+            i -= 1
+        return r
+    return branch_assemble_inner
+
+
+def is_same(x, y):
+    # return (x == y & (x != 0 | 1/x == 1/y)) | (x != x and y != y)
+    return (x == y) or (x != x and y != y)
+
+
+def _branch_or_1_level_identity(otherwise, k2o, xO, x, A, xi2yA):
+    written = None
+    same = True
+    r = {}
+    for k in k2o.keys():
+        written = 1
+        x = xO[k]
+        y = k2o[k](x, k, A, xi2yA)
+        if y is not None:
+            r[k] = y
+            if (same):
+                same = is_same(x, y)
+            else:
+                same = False
+    t = written
+    for k in xO.keys():
+        if t is None or k2o[k] is None:
+            written = 1
+            x = xO[k]
+            y = otherwise(x, k, A, xi2yA)
+            if y is not None:
+                r[k] = y
+                if (same):
+                    same = is_same(x, y)
+                else:
+                    same = False
+    return (x if (same and (xO == x)) else r) if written else x
+
+
+def __branch_or_1_level_identity(fn):
+    def __branch_or_1_level_identity(otherwise, k2o, x0, x, A, xi2yA):
+        y = fn(otherwise, k2o, x0, x, A, xi2yA)
+        if x != y:
+            #y = freeze(y)
+            y = y
+        return y
+    #__branch_or_1_level_identity.length = 4
+    return __branch_or_1_level_identity
+
+
+branch_or_1_level_identity = __branch_or_1_level_identity(
+    _branch_or_1_level_identity)
+
+
+def branch_or_1_level(otherwise, k2o):
+    def branch_or_1_level_wrapper(x, _i, A, xi2yA):
+        x0 = to_object(x) if is_dict_like(x) else dict()  # freeze(dict())
+        if I.Identity == A:
+            return branch_or_1_level_identity(otherwise, k2o, x0, x, A, xi2yA)
+        elif (I.Select == A):
+            for k in k2o.keys():
+                logger.critical(
+                    '[branch_or_1_level_wrapper] - {}, {}, {}, {}, {}'.format(k2o, x0, x, A, xi2yA))
+                tmp = k2o[k]
+                tmp.length = 4
+                y = tmp(safe_prop(k, x0), k, A, xi2yA)
+                if y is not None:
+                    return y
+            for k in x0.keys():
+                if k not in k2o.keys():
+                    y = otherwise(x0[k], k, A, xi2yA)
+                    if y is not None:
+                        return y
+        else:
+            map = A.map
+            ap = A.ap
+            of = A.of
+            xsA = of(cpair)
+            ks = []
+            for k in k2o.keys():
+                ks.append(k)
+                xsA = ap(map(cpair, xsA), k2o[k](x0[k], k, A, xi2yA))
+            t = True if len(ks) else None
+            for k in x0.keys():
+                if (t is None or k2o[k] is None):
+                    ks.append(k)
+                    xsA = ap(map(cpair, xsA), otherwise(x0[k], k, A, xi2yA))
+            return map(branch_assemble(ks), xsA) if len(ks) else of(x)
+    branch_or_1_level_wrapper.length = 4
+    return branch_or_1_level_wrapper
+
+
+def branch_or_u(otherwise, template):
+    k2o = dict()
+    for k in template.keys():
+        v = template[k]
+        k2o[k] = branch_or_u(otherwise, v) if is_dict_like(
+            v) else to_function(v)
+    return branch_or_1_level(otherwise, k2o)
+
+
+def branch_or(otherwise):
+    otherwise = to_function(otherwise)
+
+    def branch_or_inner(template):
+        return branch_or_u(otherwise, template)
+    return branch_or_inner
+
+
+def zero(x, _i, C, _xi2yC):
+    return C.of(x)
+
+
+zero.length = 4
+
+branch = branch_or(zero)
+
+values = branch_or_1_level(identity, protoless0)
+values.length = 4
+
+
+def children(x, i, C, xi2yC):
+    if is_list_like(x):
+        return elems(x, i, C, xi2yC)
+    if is_dict_like(x):
+        return values(x, i, C, xi2yC)
+        #raise NotImplementedError('Not ready for dict like')
+    return C.of(x)
+
+
+children.length = 4
+
+
+def rewrite(yi2y):
+    def rewrite_wrapper(x, i, F, xi2yF):
+        return F.map(lambda y: nth_arg(0, yi2y)(y, i) if y is not None else y, xi2yF(x, i))
+    rewrite_wrapper.length = 4
+    return rewrite_wrapper
+
+
+def reread(xi2x):
+    def reread_wrapper(x, i, _F, xi2yF):
+        return xi2yF(nth_arg(0, xi2x)(x, i) if x is not None else x, i)
+    reread_wrapper.length = 4
+    return reread_wrapper

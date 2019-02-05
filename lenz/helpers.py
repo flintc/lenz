@@ -3,6 +3,7 @@ from itertools import chain, islice
 from collections import namedtuple
 from types import new_class
 from abc import ABCMeta
+from copy import deepcopy, copy
 
 
 class ListLike(metaclass=ABCMeta):
@@ -15,6 +16,30 @@ class DictLike(metaclass=ABCMeta):
 
 DictLike.register(dict)
 
+immutable_types = set((int, str))
+
+
+class Frozen(object):
+    def __init__(self, value):
+        self._value = value
+
+    def __getattribute__(self, name):
+        if name == '_value':
+            return super(Frozen, self).__getattribute__(name)
+        v = getattr(self._value, name)
+        return v if v.__class__ in immutable_types else freeze(v)
+
+    def __setattr__(self, name, value):
+        if name == '_value':
+            super(Frozen, self).__setattr__(name, value)
+        else:
+            raise Exception(
+                "Can't modify frozen object {0}".format(self._value))
+
+
+def freeze(value):
+    return Frozen(value)
+
 
 def arityn(n):
     def decorator(fn):
@@ -22,9 +47,11 @@ def arityn(n):
         def wrapper(*args, args_state=(), kwargs_state=dict(), **kwargs):
             args_state = args_state + args
             kwargs_state = dict(**kwargs_state, **kwargs)
-            #print(args_state, kwargs_state)
             if len(args_state)+len(kwargs_state.keys()) == n:
                 result = fn(*args_state, **kwargs_state)
+                return result
+            elif len(args_state)+len(kwargs_state.keys()) > n:
+                result = fn(*args_state[0:n])
                 return result
             else:
                 return partial(wrapper, args_state=args_state, kwargs_state=kwargs_state)
@@ -101,3 +128,16 @@ def cata(f, data):
     recursed = fmap(cata_on_f, data)
     print('cata recursed', recursed)
     return f(recursed)
+
+
+def assign(obj, src):
+    for k, v in src.items():
+        v2 = copy(v)
+        obj[k] = v2
+    return obj
+
+
+def protoless(o): return assign(dict(), o)
+
+
+protoless0 = protoless({})
