@@ -1,7 +1,8 @@
 from lenz.helpers import is_dict_like, is_list_like, always, arityn, freeze, assign, protoless0
 from functools import reduce, partial
 import lenz.algebras as A
-import lenz.algebras as I
+from lenz.algebras import Select
+import lenz.infestines as I
 from copy import deepcopy, copy
 from lenz.contract import nth_arg
 import logging
@@ -41,10 +42,27 @@ def safe_prop(k, o):
         return o[k] if k in o.keys() else None
 
 
-def set_prop(k, v, o):
+def set_index(k, v, o):
     on = deepcopy(o)
-    on[k] = v
+    if v is not None:
+        #on[k] = v
+        #print('here...', k, v)
+        on = [v if ix == k else i for ix, i in enumerate(on)]
+    else:
+        on = [i for ix, i in enumerate(on) if ix != k]
     return on
+
+
+def set_prop(k, v, o):
+    r = type(o)()
+    for key in o:
+        if (key != k):
+            r[key] = o[key]
+        else:
+            if v is not None:
+                r[key] = v
+            k = None
+    return r
 
 
 fun_prop = lens_from(get_prop, set_prop)
@@ -57,7 +75,6 @@ def get_index(i, xs):
     return None
 
 
-set_index = set_prop
 fun_index = lens_from(get_index, set_index)
 
 
@@ -141,7 +158,7 @@ def modify_composed(os, xi2y, x, y=None):
         else:
            #print('[modify_composed] - else - xi2y, y', xi2y, y)
             x = composed(i, os)(
-                x, os[i-1] if len(os) >= (i-1) else None, A.Identity, xi2y or always(y))
+                x, os[i-1] if len(os) >= (i-1) else None, I.Identity, xi2y or always(y))
             #n = n-3 if n-i == 2 else i
             n = i
     if (n == len(os)):
@@ -170,7 +187,7 @@ def modify_u(o, xi2x, s):
     if is_list_like(o):
         return modify_composed(o, xi2x, s)
     # if (hasattr(o, '__len__') and len(o) == 4) else (xi2x(o(s, None), None), s)
-    return o(s, None, A.Identity, xi2x)
+    return o(s, None, I.Identity, xi2x)
     # return (xi2x(o(s, None), None), s)
 
 
@@ -182,7 +199,7 @@ def set_u(o, x, s):
     if is_list_like(o):
         return modify_composed(o, 0, s, x)
     # if (hasattr(o, '__len__') and len(o) == 4) else (xi2x(o(s, None), None), s)
-    return o(s, None, A.Identity, x)
+    return o(s, None, I.Identity, always(x)) if hasattr(o, 'length') and o.length == 4 else s
 
 
 def id(x, *algebras):
@@ -317,6 +334,7 @@ def collect_as(xi2y, t, s):
 collect = collect_as(id)
 modify = arityn(3)(modify_u)
 get = arityn(2)(get_u)
+set = arityn(3)(set_u)
 
 
 def find_index_hint(hint, xi2b, xs):
@@ -479,7 +497,7 @@ def branch_or_1_level(otherwise, k2o):
         x0 = to_object(x) if is_dict_like(x) else dict()  # freeze(dict())
         if I.Identity == A:
             return branch_or_1_level_identity(otherwise, k2o, x0, x, A, xi2yA)
-        elif (I.Select == A):
+        elif (Select == A):
             for k in k2o.keys():
                 logger.critical(
                     '[branch_or_1_level_wrapper] - {}, {}, {}, {}, {}'.format(k2o, x0, x, A, xi2yA))
