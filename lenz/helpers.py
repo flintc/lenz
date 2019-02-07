@@ -61,8 +61,11 @@ def arityn(n):
 
 
 def n_args(fn):
-    argspec = inspect.getfullargspec(fn)
-    return len(argspec.args)
+    try:
+        argspec = inspect.getfullargspec(fn)
+        return len(argspec.args)
+    except TypeError:
+        return 1
 
 
 def drop_extra_args(fn, *args):
