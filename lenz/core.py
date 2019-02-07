@@ -216,7 +216,8 @@ def modify_op(xi2y):
     def modify_op_wrapper(x, i, C, _xi2yC=None):
         logger.debug(
             '[modify_op({}) - x: {}, i: {}, C: {}'.format(xi2y.__name__, x, i, C))
-        result = C.of(xi2y(x))
+        # TODO: Figure out why the if else is needed and if another solution exists
+        result = C.of(xi2y(x)) if isinstance(x, int) else x
         return result
     modify_op_wrapper.length = 4
     modify_op_wrapper.__name__ = 'modify_op({})'.format(xi2y.__name__)
