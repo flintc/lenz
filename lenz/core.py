@@ -1,4 +1,4 @@
-from lenz.helpers import is_dict_like, is_list_like, always, arityn, freeze, assign, protoless0
+from lenz.helpers import n_args, is_dict_like, is_list_like, always, arityn, freeze, assign, protoless0
 from functools import reduce, partial
 import lenz.algebras as A
 from lenz.algebras import Select
@@ -8,12 +8,11 @@ from lenz.contract import nth_arg
 import logging
 import sys
 
-
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.CRITICAL+1)
 
 handler = logging.StreamHandler(sys.stdout)
-handler.setLevel(logging.CRITICAL)
+handler.setLevel(logging.CRITICAL+1)
 formatter = logging.Formatter('%(name)-12s: %(levelname)-10s %(message)s')
 handler.setFormatter(formatter)
 logger.addHandler(handler)
@@ -46,7 +45,6 @@ def set_index(k, v, o):
     on = deepcopy(o)
     if v is not None:
         #on[k] = v
-        #print('here...', k, v)
         on = [v if ix == k else i for ix, i in enumerate(on)]
     else:
         on = [i for ix, i in enumerate(on) if ix != k]
@@ -86,19 +84,27 @@ def composed_middle(o, r):
 
 
 def identity(x, i, _F, xi2yF):
-   #print('identity', x, i, _F, xi2yF)
     return xi2yF(x, i)
 
 
 identity.length = 4
 
 
+def maybe_binary(fn, x, i):
+    try:
+        return fn(x, i)
+    except TypeError:
+        return fn(x)
+
+
 def from_reader(wi2x):
     def from_reader_wrapper(w, i, F, xi2yF):
-        return F.map(
+        args = (w, i)
+        result = F.map(
             always(w),
-            xi2yF(wi2x(w, i), i)
+            xi2yF(wi2x(*args[0:n_args(wi2x)]), i)
         )
+        return result
     from_reader_wrapper.length = 4
     return from_reader_wrapper
 
@@ -145,7 +151,7 @@ def composed(oi0, os):
         return composed_wrapper
 
 
-def modify_composed(os, xi2y, x, y=None):
+def modify_composed(os, xi2y, x, y):
     n = len(os)
     logger.debug('[{}] - len(os): {}'.format('modify_composed', len(os)))
     xs = []
@@ -187,8 +193,12 @@ def modify_u(o, xi2x, s):
     if is_list_like(o):
         return modify_composed(o, xi2x, s)
     # if (hasattr(o, '__len__') and len(o) == 4) else (xi2x(o(s, None), None), s)
-    return o(s, None, I.Identity, xi2x)
+    args = (s, None, I.Identity, xi2x)
+    logger.critical('[modify_u] {}({}, {}, {}, {})'.format(o.__name__, *args))
+    # return o(*args[0:n_args(o)])
+    # return o(*args)
     # return (xi2x(o(s, None), None), s)
+    return o(s, None, I.Identity, always(s)) if hasattr(o, 'length') and o.length == 4 else s
 
 
 def set_u(o, x, s):
@@ -213,7 +223,7 @@ def transform(o, s):
 
 
 def modify_op(xi2y):
-    def modify_op_wrapper(x, i, C, _xi2yC=None):
+    def modify_op_wrapper(x, i, C, _xi2yC):
         logger.debug(
             '[modify_op({}) - x: {}, i: {}, C: {}'.format(xi2y.__name__, x, i, C))
         # TODO: Figure out why the if else is needed and if another solution exists
@@ -249,13 +259,13 @@ def get_as_u(xi2y, l, s):
                 return composed(i, l)(s, l[i-1] if len(l) >= (i-1) else None, A.Select, xi2y)
         return xi2y(s, l[n-1] if len(l) >= (n-1) and n > 0 else None)
     if xi2y is not id and (l.length != 4 if hasattr(l, 'length') else False):
-       #print('get_as_u if', l)
         logger.critical('[get_as_u] if - {}'.format(l))
         return xi2y(l(s, None), None)
     else:
-       #print('get_as_u else', l)
         logger.critical('[get_as_u] else - {}'.format(l))
-        return l(s, None, A.Select, xi2y)
+        args = (s, None, A.Select, xi2y)
+        logger.critical('[get_as_u] - {}, {}, {}, {}'.format(*args))
+        return l(*args[0:n_args(l)])
 
 
 def get_u(l, s): return get_as_u(id, l, s)
@@ -302,14 +312,21 @@ def subseq_u(begin, end, t):
     return subseq_u_wrapper
 
 
+def tmp(*args):
+    #print(args)
+    return args
+
+
 def elems(xs, _i, A, xi2yA):
+    #print(xi2yA, A)
     result = reduce(
         lambda ysF, x: A.ap(
             A.map(
-                lambda ys: lambda y: [*ys, y], ysF),
-            xi2yA(x, xs)),
-        xs,
+                lambda ys: lambda y: [*tmp(*ys), y], ysF),
+            *tmp(xi2yA(*tmp(*reversed(tmp(*x)))))),
+        enumerate(xs),
         A.of([]))
+    #print('result', result)
     return result
 
 
@@ -322,13 +339,11 @@ def collect_as(xi2y, t, s):
 
     def as_fn(x, i):
         y = nth_arg(0, xi2y)(x, i)
-       #print(x, i, y, t)
         if y is not None:
             results.append(y)
     get_as_u(
         as_fn,
         t, s)
-   #print('results', results)
     return results
 
 

@@ -4,6 +4,7 @@ from collections import namedtuple
 from types import new_class
 from abc import ABCMeta
 from copy import deepcopy, copy
+import inspect
 
 
 class ListLike(metaclass=ABCMeta):
@@ -57,6 +58,23 @@ def arityn(n):
                 return partial(wrapper, args_state=args_state, kwargs_state=kwargs_state)
         return wrapper
     return decorator
+
+
+def n_args(fn):
+    argspec = inspect.getfullargspec(fn)
+    return len(argspec.args)
+
+
+def drop_extra_args(fn, *args):
+    error = None
+    for i in reversed(range(len(args))):
+        try:
+            return fn(args[0:i])
+        except TypeError as e:
+            error = e
+            continue
+    if error is not None:
+        raise error
 
 
 def snd_u(x, y):
