@@ -277,7 +277,7 @@ def get_pick(template, x):
         t = template[k]
         v = get_pick(t, x) if is_dict_like(t) else get_as_u(id, t, x)
         if v is not None:
-            if not r:
+            if r is None:
                 r = type(x)()
             r[k] = v
     return r
