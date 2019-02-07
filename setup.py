@@ -1,7 +1,7 @@
 from setuptools import setup
 
 setup(name='lenz',
-      version='0.2.1.0',
+      version='0.2.1.1',
       description='A functional lens library for python',
       url='http://github.com/flintc/lenz',
       license='MIT',
