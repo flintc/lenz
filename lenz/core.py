@@ -236,7 +236,7 @@ def modify_op(xi2y):
 
 def set_pick(template, value, x):
     for k in template:
-        v = value[k] if k in value.keys() else None
+        v = value[k] if k in value else None
         t = template[k]
         x = set_pick(t, v, x) if is_dict_like(t) else set_u(t, v, x)
     return x
@@ -273,12 +273,12 @@ def get_u(l, s): return get_as_u(id, l, s)
 
 def get_pick(template, x):
     r = None
-    for k in template.keys():
+    for k in template:
         t = template[k]
         v = get_pick(t, x) if is_dict_like(t) else get_as_u(id, t, x)
         if v is not None:
             if not r:
-                r = {}
+                r = type(x)()
             r[k] = v
     return r
 
