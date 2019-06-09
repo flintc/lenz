@@ -9,7 +9,12 @@ import logging
 import sys
 
 logger = logging.getLogger(__name__)
+<<<<<<< HEAD
 logger.setLevel(logging.CRITICAL+1)
+=======
+logger.setLevel(logging.DEBUG)
+logger.setLevel(100)
+>>>>>>> master
 
 handler = logging.StreamHandler(sys.stdout)
 handler.setLevel(logging.CRITICAL+1)
@@ -212,14 +217,14 @@ def set_u(o, x, s):
     return o(s, None, I.Identity, always(x)) if hasattr(o, 'length') and o.length == 4 else s
 
 
-def id(x, *algebras):
+def id_(x, *algebras):
    #print('id', x, algebras)
     return x
 
 
 @arityn(2)
 def transform(o, s):
-    return modify_u(o, id, s)
+    return modify_u(o, id_, s)
 
 
 def modify_op(xi2y):
@@ -256,10 +261,17 @@ def get_as_u(xi2y, l, s):
             elif isinstance(l[i], int):
                 s = get_index(l[i], s)
             else:
+<<<<<<< HEAD
                 return composed(i, l)(s, l[i-1] if len(l) >= (i-1) else None, A.Select, xi2y)
         return xi2y(s, l[n-1] if len(l) >= (n-1) and n > 0 else None)
     if xi2y is not id and (l.length != 4 if hasattr(l, 'length') else False):
         logger.critical('[get_as_u] if - {}'.format(l))
+=======
+                return composed(i, l)(s, l[i-1], A.Select, xi2y)
+        return xi2y(s, l[n-1])
+    if xi2y is not id_ and (l.length != 4 if hasattr(l, 'length') else False):
+       #print('get_as_u if', l)
+>>>>>>> master
         return xi2y(l(s, None), None)
     else:
         logger.critical('[get_as_u] else - {}'.format(l))
@@ -268,14 +280,14 @@ def get_as_u(xi2y, l, s):
         return l(*args[0:n_args(l)])
 
 
-def get_u(l, s): return get_as_u(id, l, s)
+def get_u(l, s): return get_as_u(id_, l, s)
 
 
 def get_pick(template, x):
     r = None
     for k in template:
         t = template[k]
-        v = get_pick(t, x) if is_dict_like(t) else get_as_u(id, t, x)
+        v = get_pick(t, x) if is_dict_like(t) else get_as_u(id_, t, x)
         if v is not None:
             if r is None:
                 r = type(x)()
@@ -284,7 +296,43 @@ def get_pick(template, x):
 
 
 def pick(template):
+<<<<<<< HEAD
     def pick_wrapper(x, i, F, xi2yF):
+=======
+    """L.pick creates a lens out of the given possibly nested object template of 
+    lenses and allows one to pick apart a data structure and then put it back 
+    together. When viewed, undefined properties are not added to the result and 
+    if the result would be an empty object, the result will be undefined. This 
+    allows L.pick to be used with e.g. L.choices. Otherwise an object is created, 
+    whose properties are obtained by viewing through the lenses of the template. 
+    When set with an object, the properties of the object are set to the context 
+    via the lenses of the template.
+
+    For example, let's say we need to deal with data and schema in need of some 
+    semantic restructuring:
+
+    sample_flat = {'px': 1, 'py': 2, 'vx': 1, 'vy': 0}
+
+    We can use L.pick to create a lens to pick apart the data and put it back 
+    together into a more meaningful structure:
+
+    sanitize = L.pick({'pos': {'x': 'px', 'y': 'py'}, vel: {'x': 'vx', 'y': 'vy'}})
+
+    In the template object the lenses are relative to the root focus of L.pick.
+
+    We now have a better structured view of the data:
+
+    L.get(sanitize, sampleFlat)
+    # { 'pos': { 'x': 1, 'y': 2 }, vel: { 'x': 1, 'y': 0 } }
+
+    Arguments:
+        template {dict} -- mapping of keys to lenses relative to the root focus
+
+    Returns:
+        dict -- sanitized result
+    """
+    def wrapper(x, i, F, xi2yF):
+>>>>>>> master
         return F.map(
             lambda v: set_pick(template, v, x),
             xi2yF(get_pick(template, x), i)
@@ -347,6 +395,7 @@ def collect_as(xi2y, t, s):
     return results
 
 
+<<<<<<< HEAD
 collect = collect_as(id)
 modify = arityn(3)(modify_u)
 get = arityn(2)(get_u)
@@ -599,3 +648,23 @@ def reread(xi2x):
         return xi2yF(nth_arg(0, xi2x)(x, i) if x is not None else x, i)
     reread_wrapper.length = 4
     return reread_wrapper
+=======
+@arityn(2)
+def collect(t, s):
+    return collect_as(id_, t, s)
+
+
+@arityn(3)
+def modify(o, xi2x, s):
+    return modify_u(o, xi2x, s)
+
+
+@arityn(3)
+def set(o, x, s):
+    return set_u(o, x, s)
+
+
+@arityn(2)
+def get(l, s):
+    return get_u(l, s)
+>>>>>>> master
