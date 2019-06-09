@@ -158,14 +158,13 @@ def should_work():
                 'amount': 'Amount',
                 'date': 'Date',
             })),
-            #L.modify('date', lambda x: x+'!'),
+            L.modify('date', lambda x: x+'!'),
             #     L.set('account',
-            #           store.account.api.where({'description': {'eq': 'checking_clf'},
+            #           'checking',
             #     })),
-            #     L.modify([], store.create_transaction)
         ])
         result = operation(data)
-        print('result', result)
+        #print('result', result)
         assert(result == expected)
         return result
     testN()
