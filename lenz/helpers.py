@@ -23,8 +23,9 @@ def arityn(n):
             args_state = args_state + args
             kwargs_state = dict(**kwargs_state, **kwargs)
             #print(args_state, kwargs_state)
-            if len(args_state)+len(kwargs_state.keys()) == n:
-                result = fn(*args_state, **kwargs_state)
+            if len(args_state)+len(kwargs_state.keys()) >= n:
+                result = fn(
+                    *args_state[0:(n-len(kwargs_state.keys()))], **kwargs_state)
                 return result
             else:
                 return partial(wrapper, args_state=args_state, kwargs_state=kwargs_state)
