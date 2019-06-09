@@ -9,12 +9,8 @@ import logging
 import sys
 
 logger = logging.getLogger(__name__)
-<<<<<<< HEAD
-logger.setLevel(logging.CRITICAL+1)
-=======
 logger.setLevel(logging.DEBUG)
 logger.setLevel(100)
->>>>>>> master
 
 handler = logging.StreamHandler(sys.stdout)
 handler.setLevel(logging.CRITICAL+1)
@@ -261,17 +257,10 @@ def get_as_u(xi2y, l, s):
             elif isinstance(l[i], int):
                 s = get_index(l[i], s)
             else:
-<<<<<<< HEAD
                 return composed(i, l)(s, l[i-1] if len(l) >= (i-1) else None, A.Select, xi2y)
         return xi2y(s, l[n-1] if len(l) >= (n-1) and n > 0 else None)
     if xi2y is not id and (l.length != 4 if hasattr(l, 'length') else False):
         logger.critical('[get_as_u] if - {}'.format(l))
-=======
-                return composed(i, l)(s, l[i-1], A.Select, xi2y)
-        return xi2y(s, l[n-1])
-    if xi2y is not id_ and (l.length != 4 if hasattr(l, 'length') else False):
-       #print('get_as_u if', l)
->>>>>>> master
         return xi2y(l(s, None), None)
     else:
         logger.critical('[get_as_u] else - {}'.format(l))
@@ -296,9 +285,6 @@ def get_pick(template, x):
 
 
 def pick(template):
-<<<<<<< HEAD
-    def pick_wrapper(x, i, F, xi2yF):
-=======
     """L.pick creates a lens out of the given possibly nested object template of 
     lenses and allows one to pick apart a data structure and then put it back 
     together. When viewed, undefined properties are not added to the result and 
@@ -332,7 +318,6 @@ def pick(template):
         dict -- sanitized result
     """
     def wrapper(x, i, F, xi2yF):
->>>>>>> master
         return F.map(
             lambda v: set_pick(template, v, x),
             xi2yF(get_pick(template, x), i)
@@ -361,7 +346,7 @@ def subseq_u(begin, end, t):
 
 
 def tmp(*args):
-    #print(args)
+    # print(args)
     return args
 
 
@@ -395,11 +380,24 @@ def collect_as(xi2y, t, s):
     return results
 
 
-<<<<<<< HEAD
-collect = collect_as(id)
-modify = arityn(3)(modify_u)
-get = arityn(2)(get_u)
-set = arityn(3)(set_u)
+@arityn(2)
+def collect(t, s):
+    return collect_as(id_, t, s)
+
+
+@arityn(3)
+def modify(o, xi2x, s):
+    return modify_u(o, xi2x, s)
+
+
+@arityn(3)
+def set(o, x, s):
+    return set_u(o, x, s)
+
+
+@arityn(2)
+def get(l, s):
+    return get_u(l, s)
 
 
 def find_index_hint(hint, xi2b, xs):
@@ -648,23 +646,3 @@ def reread(xi2x):
         return xi2yF(nth_arg(0, xi2x)(x, i) if x is not None else x, i)
     reread_wrapper.length = 4
     return reread_wrapper
-=======
-@arityn(2)
-def collect(t, s):
-    return collect_as(id_, t, s)
-
-
-@arityn(3)
-def modify(o, xi2x, s):
-    return modify_u(o, xi2x, s)
-
-
-@arityn(3)
-def set(o, x, s):
-    return set_u(o, x, s)
-
-
-@arityn(2)
-def get(l, s):
-    return get_u(l, s)
->>>>>>> master
