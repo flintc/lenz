@@ -280,6 +280,7 @@ def pick(template):
             lambda v: set_pick(template, v, x),
             xi2yF(get_pick(template, x), i)
         )
+    wrapper.length = 4
     return wrapper
 
 
