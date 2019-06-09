@@ -145,6 +145,30 @@ def should_work():
         return result
     testK()
 
+    @log_test
+    def testN():
+        data = [{'Description': 'A', 'Amount': 10, 'Date': '2018/01/01'},
+                {'Description': 'B', 'Amount': 20, 'Date': '2018/01/02'}]
+        expected = [{'description': 'A', 'amount': 10, 'date': '2018/01/01!'},
+                    {'description': 'B', 'amount': 20, 'date': '2018/01/02!'}]
+        operation = L.collect([
+            L.elems,
+            L.get(L.pick({
+                'description': 'Description',
+                'amount': 'Amount',
+                'date': 'Date',
+            })),
+            L.modify('date', lambda x: x+'!'),
+            #     L.set('account',
+            #           'checking',
+            #     })),
+        ])
+        result = operation(data)
+        #print('result', result)
+        assert(result == expected)
+        return result
+    testN()
+
 
 def known_exceptions():
     @log_test
