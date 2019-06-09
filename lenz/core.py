@@ -13,7 +13,7 @@ logger.setLevel(logging.DEBUG)
 logger.setLevel(100)
 
 handler = logging.StreamHandler(sys.stdout)
-handler.setLevel(logging.CRITICAL+1)
+# handler.setLevel(logging.CRITICAL+1)
 formatter = logging.Formatter('%(name)-12s: %(levelname)-10s %(message)s')
 handler.setFormatter(formatter)
 logger.addHandler(handler)
