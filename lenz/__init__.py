@@ -10,6 +10,14 @@ from .core import (
     get,
     pick,
     handler,
-    subseq_u,
     set_u,
+    subseq,
+    subseq_u
 )
+from .helpers import (
+    DictLike,
+    register_list_like
+)
+import lenz.algebras
+
+__version__ = '0.2'

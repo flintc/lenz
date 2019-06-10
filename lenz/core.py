@@ -37,7 +37,10 @@ def get_prop(k, o):
 
 def set_prop(k, v, o):
     on = deepcopy(o)
-    on[k] = v
+    if v is None:
+        on.pop(k)
+    else:
+        on[k] = v
     return on
 
 
@@ -67,6 +70,8 @@ def identity(x, i, _F, xi2yF):
 
 
 def from_reader(wi2x):
+    wi2x = maybe_reader(wi2x)
+
     def wrapper(w, i, F, xi2yF):
         return F.map(
             always(w),
@@ -129,6 +134,7 @@ def modify_composed(os, xi2y, x, y=None):
             x = composed(i, os)(x, os[i-1], A.Identity, xi2y or always(y))
             #n = n-3 if n-i == 2 else i
             n = i
+            break  # addresses test L.modify(['xs', L.elems, 'x'], func, data)
     if (n == len(os)):
        #print('[modify_composed] - n==len(os) -', xi2y, x, os[n-1], y)
         x = xi2y(x, os[n-1]) if xi2y else y
@@ -147,7 +153,8 @@ def modify_composed(os, xi2y, x, y=None):
 
 def modify_u(o, xi2x, s):
     logger.debug('Test message')
-    xi2x = nth_arg(0, xi2x)
+    #xi2x = nth_arg(0, xi2x)
+    xi2x = maybe_reader(xi2x)
     if isinstance(o, str):
         return set_prop(o, xi2x(get_prop(o, s), o), s)
     if isinstance(o, int):
@@ -200,7 +207,18 @@ def set_pick(template, value, x):
     return x
 
 
+def maybe_reader(fn):
+    def wrapper(l, s):
+        try:
+            result = fn(l, s)
+        except:
+            result = fn(l)
+        return result
+    return wrapper
+
+
 def get_as_u(xi2y, l, s):
+    xi2y = maybe_reader(xi2y)
     if isinstance(l, str):
         return xi2y(get_prop(l, s), l)
     if isinstance(l, int):
@@ -236,8 +254,8 @@ def get_pick(template, x):
         t = template[k]
         v = get_pick(t, x) if is_dict_like(t) else get_as_u(id_, t, x)
         if v is not None:
-            if not r:
-                r = {}
+            if r is None:
+                r = type(x)()
             r[k] = v
     return r
 
@@ -303,14 +321,32 @@ def subseq_u(begin, end, t):
     return wrapper
 
 
+# def elems(xs, _i, A, xi2yA):
+#     result = reduce(
+#         lambda ysF, x: A.ap(
+#             A.map(
+#                 lambda ys: lambda y: [*ys, y], ysF),
+#             xi2yA(x, xs)),
+#         xs,
+#         A.of([]))
+#     return result
+
+def tmp(*args):
+    # print(args)
+    return args
+
+
 def elems(xs, _i, A, xi2yA):
+    #print(xi2yA, A)
     result = reduce(
         lambda ysF, x: A.ap(
             A.map(
-                lambda ys: lambda y: [*ys, y], ysF),
-            xi2yA(x, xs)),
-        xs,
+                lambda ys: lambda y: [*tmp(*ys), y], ysF),
+            *tmp(xi2yA(*tmp(*reversed(tmp(*x)))))),
+        enumerate(xs),
         A.of([]))
+
+    #print('result', result)
     return result
 
 
@@ -369,6 +405,11 @@ def modify(o, xi2x, s):
 @arityn(3)
 def set(o, x, s):
     return set_u(o, x, s)
+
+
+@arityn(3)
+def subseq(begin, end, t):
+    return subseq_u(begin, end, t)
 
 
 @arityn(2)
