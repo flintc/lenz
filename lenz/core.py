@@ -122,7 +122,7 @@ def modify_composed(os, xi2y, x, y=None):
     xs = []
     # TODO: find permanent solution for when optic is empty list: []
     if n == 0:
-        return xi2y(x)
+        return xi2y(x, os)  # TODO: not sure about adding os as 2nd arg
     for i in range(len(os)):
         xs.append(x)
         if isinstance(os[i], str):
@@ -208,17 +208,20 @@ def set_pick(template, value, x):
 
 
 def maybe_reader(fn):
-    def wrapper(l, s):
+    def wrapper(l, *args):
         try:
-            result = fn(l, s)
+            result = fn(l, args[0])
         except:
-            result = fn(l)
+            try:
+                result = fn(l)
+            except:
+                result = fn(l, *args)
         return result
     return wrapper
 
 
 def get_as_u(xi2y, l, s):
-    xi2y = maybe_reader(xi2y)
+    #xi2y = maybe_reader(xi2y)
     if isinstance(l, str):
         return xi2y(get_prop(l, s), l)
     if isinstance(l, int):
@@ -235,6 +238,7 @@ def get_as_u(xi2y, l, s):
             elif isinstance(l[i], int):
                 s = get_index(l[i], s)
             else:
+                #print('here\n\n', l[i], '\n\n\n')
                 return composed(i, l)(s, l[i-1], A.Select, xi2y)
         return xi2y(s, l[n-1])
     if xi2y is not id_ and (l.length != 4 if hasattr(l, 'length') else False):
@@ -242,7 +246,7 @@ def get_as_u(xi2y, l, s):
         return xi2y(l(s, None), None)
     else:
        #print('get_as_u else', l)
-        return l(s, None, A.Select, xi2y)
+        return maybe_reader(l)(s, None, A.Select, xi2y)
 
 
 def get_u(l, s): return get_as_u(id_, l, s)
