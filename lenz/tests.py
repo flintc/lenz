@@ -164,7 +164,6 @@ def should_work():
             #     })),
         ])
         result = operation(data)
-        #print('result', result)
         assert(result == expected)
         return result
     testN()

@@ -1,10 +1,25 @@
-from lenz.helpers import is_dict_like, is_list_like, always, arityn
+from lenz.helpers import is_dict_like, is_list_like, safe_ix, always, arityn, tap
 from functools import reduce, partial
 import lenz.algebras as A
+import lenz.infestines as I
 from copy import deepcopy
 from lenz.contract import nth_arg
 import logging
 import sys
+import numpy as np
+
+# from types import NoneType
+MUTABLE = False
+
+
+def enable_mutability():
+    global MUTABLE
+    MUTABLE = True
+
+
+def disable_mutability():
+    global MUTABLE
+    MUTABLE = False
 
 
 logger = logging.getLogger(__name__)
@@ -12,11 +27,16 @@ logger.setLevel(logging.DEBUG)
 logger.setLevel(100)
 
 handler = logging.StreamHandler(sys.stdout)
-handler.setLevel(logging.NOTSET)
+handler.setLevel(logging.DEBUG)
 formatter = logging.Formatter('%(name)-12s: %(levelname)-10s %(message)s')
 handler.setFormatter(formatter)
 logger.addHandler(handler)
 
+
+# LENSES = [
+#   [is_dict_like, lens_from(get_prop, set_prop)],
+#   [is_list_like, lens_from(get_index, set_index)],
+# ]
 
 def lens_from(get, set):
     def wrapper(i):
@@ -25,23 +45,50 @@ def lens_from(get, set):
                 lambda v: set(i, v, x),
                 xi2yF(get(i, x), i)
             )
+        inner.length = 4
         return inner
     return wrapper
 
 
 def get_prop(k, o):
     if is_dict_like(o):
-        return o[k]
+        try:
+            return o.get(k, Undefined())
+        except AttributeError:
+            try:
+                return getattr(o, k)
+            except AttributeError:
+                return Undefined()
+        # return o[k]
     return None
 
 
 def set_prop(k, v, o):
-    on = deepcopy(o)
-    if v is None:
-        on.pop(k)
+    if MUTABLE:
+        on = o
     else:
-        on[k] = v
+        on = deepcopy(o)
+    if isinstance(on, Undefined) and isinstance(k, int):
+        return [v]
+    if v is None:
+        try:
+            on.pop(k)
+        except AttributeError:
+            delattr(on, k)
+    elif not isinstance(v, Undefined):
+        try:
+
+            on[k] = v
+        except TypeError:
+            setattr(on, k, v)
     return on
+
+
+def _iter(v):
+    try:
+        return iter(v)
+    except TypeError:
+        return iter(v.__dict__)
 
 
 fun_prop = lens_from(get_prop, set_prop)
@@ -53,7 +100,14 @@ def get_index(i, xs):
     return None
 
 
-set_index = set_prop
+def set_index(k, v, o):
+    on = set_prop(k, v, list(o))
+    if not isinstance(o, np.ndarray):
+        return type(o)(on)
+    else:
+        return np.array(on)
+
+
 fun_index = lens_from(get_index, set_index)
 
 
@@ -65,8 +119,10 @@ def composed_middle(o, r):
 
 
 def identity(x, i, _F, xi2yF):
-   #print('identity', x, i, _F, xi2yF)
     return xi2yF(x, i)
+
+
+identity.length = 4
 
 
 def from_reader(wi2x):
@@ -77,6 +133,7 @@ def from_reader(wi2x):
             always(w),
             xi2yF(wi2x(w, i), i)
         )
+    wrapper.length = 4
     return wrapper
 
 
@@ -95,21 +152,21 @@ def composed(oi0, os):
     n = len(os) - oi0
     logger.debug(
         '[{}] - len(os): {} - oi0: {}'.format('composed', len(os), oi0))
-   #print('[composed] - ', oi0, os, n)
     if n < 2:
         # if n==1 and oi0==1:
         #    return identity
+
         if n != 0:
             return to_function(os[oi0])
         return identity
     else:
         n -= 1
         last = to_function(os[oi0+n])
-       #print('here', oi0, n, os[oi0+n], last)
 
         def r(F, xi2yF): return lambda x, i: last(x, i, F, xi2yF)
         n -= 1
         while n > 0:
+
             r = composed_middle(to_function(os[oi0+n]), r)
             n -= 1
         first = to_function(os[oi0])
@@ -120,40 +177,42 @@ def modify_composed(os, xi2y, x, y=None):
     n = len(os)
     logger.debug('[{}] - len(os): {}'.format('modify_composed', len(os)))
     xs = []
-    # TODO: find permanent solution for when optic is empty list: []
-    if n == 0:
-        return xi2y(x, os)  # TODO: not sure about adding os as 2nd arg
     for i in range(len(os)):
         xs.append(x)
-        if isinstance(os[i], str):
-            x = get_prop(os[i], x)
-        elif isinstance(os[i], int):
-            x = get_index(os[i], x)
+        if isinstance(safe_ix(i, os), str):
+            x = get_prop(safe_ix(i, os), x)
+        elif isinstance(safe_ix(i, os), int):
+            x = get_index(safe_ix(i, os), x)
         else:
-           #print('[modify_composed] - else - xi2y, y', xi2y, y)
-            x = composed(i, os)(x, os[i-1], A.Identity, xi2y or always(y))
-            #n = n-3 if n-i == 2 else i
+            x = composed(i, os)(x, safe_ix(i-1, os),
+                                A.Identity, xi2y or always(y))
             n = i
+
             break  # addresses test L.modify(['xs', L.elems, 'x'], func, data)
     if (n == len(os)):
-       #print('[modify_composed] - n==len(os) -', xi2y, x, os[n-1], y)
-        x = xi2y(x, os[n-1]) if xi2y else y
+        x = xi2y(x, safe_ix(n-1, os)) if xi2y else y
     n -= 1
     while 0 <= n:
-       #print('[modify_comnposed] - while -', n, x, xs[n], os[n])
-        if callable(os[n]):  # and os[n].__name__ in ['elems', 'subseq_u']:
-           #print('[TMP FIX] - continue if callable(optic)')
+        if callable(safe_ix(n, os)):
             n -= 1
             continue
+            # pass
+        # if isinstance(safe_ix(n,os), str):
+        #     if is_dict_like(xs[n]):
+        #          x = set_prop(os[n], x, xs[n])
+        #     else:
+        #         x = set_index(os[n], x, xs[n])
+        # else:
+        #     if is_dict_like(xs[n]):
+        #         x =
         x = set_prop(os[n], x, xs[n]) if isinstance(
-            os[n], str) else set_index(os[n], x, xs[n])
+            safe_ix(n, os), str) else set_index(safe_ix(n, os), x, xs[n])
         n -= 1
     return x
 
 
 def modify_u(o, xi2x, s):
     logger.debug('Test message')
-    #xi2x = nth_arg(0, xi2x)
     xi2x = maybe_reader(xi2x)
     if isinstance(o, str):
         return set_prop(o, xi2x(get_prop(o, s), o), s)
@@ -161,9 +220,10 @@ def modify_u(o, xi2x, s):
         return set_index(o, xi2x(get_index(o, s), o), s)
     if is_list_like(o):
         return modify_composed(o, xi2x, s)
-    # if (hasattr(o, '__len__') and len(o) == 4) else (xi2x(o(s, None), None), s)
-    return o(s, None, A.Identity, xi2x)
-    # return (xi2x(o(s, None), None), s)
+    if (hasattr(o, 'length') and o.length == 4):
+        return o(s, None, A.Identity, xi2x)
+    else:
+        return (xi2x(o(s, None), None), s)
 
 
 def set_u(o, x, s):
@@ -173,12 +233,13 @@ def set_u(o, x, s):
         return set_index(o, x, s)
     if is_list_like(o):
         return modify_composed(o, 0, s, x)
-    # if (hasattr(o, '__len__') and len(o) == 4) else (xi2x(o(s, None), None), s)
-    return o(s, None, A.Identity, x)
+    if (hasattr(o, 'length') and o.length == 4):
+        return o(s, None, A.Identity, I.always(x))
+    else:
+        return s
 
 
 def id_(x, *algebras):
-   #print('id', x, algebras)
     return x
 
 
@@ -189,9 +250,7 @@ def transform(o, s):
 
 def modify_op(xi2y):
     def wrapper(x, i, C, _xi2yC=None):
-       #print('[modify_op({})] - '.format(xi2y.__name__), x, i, C, _xi2yC)
         result = C.of(xi2y(x)) if isinstance(x, int) else x
-       #print('[modify_op({}) - result -'.format(xi2y.__name__), result)
         return result  # if isinstance(x, int) else 'b'
 
     wrapper.length = 4
@@ -211,17 +270,17 @@ def maybe_reader(fn):
     def wrapper(l, *args):
         try:
             result = fn(l, args[0])
-        except:
+        except TypeError as e:
             try:
                 result = fn(l)
-            except:
+            except TypeError as e:
                 result = fn(l, *args)
         return result
     return wrapper
 
 
 def get_as_u(xi2y, l, s):
-    #xi2y = maybe_reader(xi2y)
+    # xi2y = maybe_reader(xi2y)
     if isinstance(l, str):
         return xi2y(get_prop(l, s), l)
     if isinstance(l, int):
@@ -231,6 +290,7 @@ def get_as_u(xi2y, l, s):
         logger.debug('[{}] - l: {} - s: {}'.format('get_as_us', l, s))
         # TODO: find permanent solution for when optic is empty list: []
         if n == 0:
+
             return s
         for i in range(0, n):
             if isinstance(l[i], str):
@@ -238,51 +298,65 @@ def get_as_u(xi2y, l, s):
             elif isinstance(l[i], int):
                 s = get_index(l[i], s)
             else:
-                #print('here\n\n', l[i], '\n\n\n')
                 return composed(i, l)(s, l[i-1], A.Select, xi2y)
         return xi2y(s, l[n-1])
     if xi2y is not id_ and (l.length != 4 if hasattr(l, 'length') else False):
-       #print('get_as_u if', l)
         return xi2y(l(s, None), None)
     else:
-       #print('get_as_u else', l)
         return maybe_reader(l)(s, None, A.Select, xi2y)
 
 
 def get_u(l, s): return get_as_u(id_, l, s)
 
 
+class Undefined(dict):
+    pass
+
+
 def get_pick(template, x):
-    r = None
+    r = {}
     for k in template.keys():
         t = template[k]
-        v = get_pick(t, x) if is_dict_like(t) else get_as_u(id_, t, x)
+        # v = get_pick(t, x) if is_dict_like(t) else get_as_u(id_, t, x)
+        if is_dict_like(t):
+            v = get_pick(t, x)
+        else:
+            try:
+                v = get_as_u(id_, t, x)
+            except KeyError:
+                v = Undefined()
         if v is not None:
             if r is None:
                 r = type(x)()
             r[k] = v
-    return r
+
+    return r if len(r) > 0 else None
+
+
+def _filter_undefined(x):
+    return type(x)((key, value) for key, value in x.items() if not isinstance(value, Undefined))
 
 
 def pick(template):
-    """L.pick creates a lens out of the given possibly nested object template of 
-    lenses and allows one to pick apart a data structure and then put it back 
-    together. When viewed, undefined properties are not added to the result and 
-    if the result would be an empty object, the result will be undefined. This 
-    allows L.pick to be used with e.g. L.choices. Otherwise an object is created, 
-    whose properties are obtained by viewing through the lenses of the template. 
-    When set with an object, the properties of the object are set to the context 
+    """L.pick creates a lens out of the given possibly nested object template of
+    lenses and allows one to pick apart a data structure and then put it back
+    together. When viewed, undefined properties are not added to the result and
+    if the result would be an empty object, the result will be undefined. This
+    allows L.pick to be used with e.g. L.choices. Otherwise an object is created,
+    whose properties are obtained by viewing through the lenses of the template.
+    When set with an object, the properties of the object are set to the context
     via the lenses of the template.
 
-    For example, let's say we need to deal with data and schema in need of some 
+    For example, let's say we need to deal with data and schema in need of some
     semantic restructuring:
 
     sample_flat = {'px': 1, 'py': 2, 'vx': 1, 'vy': 0}
 
-    We can use L.pick to create a lens to pick apart the data and put it back 
+    We can use L.pick to create a lens to pick apart the data and put it back
     together into a more meaningful structure:
 
-    sanitize = L.pick({'pos': {'x': 'px', 'y': 'py'}, vel: {'x': 'vx', 'y': 'vy'}})
+    sanitize = L.pick({'pos': {'x': 'px', 'y': 'py'},
+                      vel: {'x': 'vx', 'y': 'vy'}})
 
     In the template object the lenses are relative to the root focus of L.pick.
 
@@ -298,10 +372,18 @@ def pick(template):
         dict -- sanitized result
     """
     def wrapper(x, i, F, xi2yF):
-        return F.map(
+        out = F.map(
             lambda v: set_pick(template, v, x),
             xi2yF(get_pick(template, x), i)
         )
+        # handle case where all keys in pick don't exist in data
+        if (is_dict_like(out)):
+            if all(isinstance(x, Undefined) for x in out.values()):
+                return None
+            else:
+                return _filter_undefined(out)
+        else:
+            return out
     wrapper.length = 4
     return wrapper
 
@@ -336,48 +418,80 @@ def subseq_u(begin, end, t):
 #     return result
 
 def tmp(*args):
-    # print(args)
     return args
 
 
-def elems(xs, _i, A, xi2yA):
-    #print(xi2yA, A)
-    result = reduce(
-        lambda ysF, x: A.ap(
+def boo(A, xi2yA):
+    def _boo(ysF, x):
+        try:
+            foo = xi2yA(*reversed(x))
+        except Exception as e:
+            return [x[1]]
+        out = A.ap(
             A.map(
-                lambda ys: lambda y: [*tmp(*ys), y], ysF),
-            *tmp(xi2yA(*tmp(*reversed(tmp(*x)))))),
+                lambda ys: lambda y: [*ys, y], ysF),
+            foo
+        )
+        return out
+    return _boo
+
+
+def elems(xs, _i, A, xi2yA):
+    n = len(xs) if is_list_like(xs) else 0
+    ys = []
+    j = 0
+    same = True
+    for i in range(n):
+        x = xs[i]
+        try:
+            y = xi2yA(x, i)
+        except KeyError:
+            y = x
+        j += 1
+        if y is not None and not isinstance(y, Undefined):
+            ys.append(y)
+        if (same):
+
+            same = (x == y and (x != 0 or (x == 0 and y == 0))) or (
+                x != x and y != y)
+    if (j != n):
+        for _ in range(n-j):
+            ys.append(None)
+    elif same:
+        return xs
+    else:
+        return ys
+
+
+def elems_(xs, _i, A, xi2yA):
+    result = reduce(
+        boo(A, xi2yA),
         enumerate(xs),
         A.of([]))
-
-    #print('result', result)
     return result
 
 
 def get_values(ys):
-   #print('get_values', ys)
     return ys.values()
 
 
 def values_helper(ys, y, ysF, x):
-   #print(ys, y, ysF, x)
     pass
 
 
-def values(xs, _i, A, xi2yA):
-   #print('values', _i, A, xs, xi2yA)
-    result = reduce(
-        lambda ysF, x: A.ap(
-            A.map(
-                lambda ys: lambda y: values_helper(ys, y, ysF, x), ysF),
-            xi2yA(x, xs)),
-        xs.items(),
-        A.of(dict()))
-    return result
+# def values(xs, _i, A, xi2yA):
+#    # print('values', _i, A, xs, xi2yA)
+#     result = reduce(
+#         lambda ysF, x: A.ap(
+#             A.map(
+#                 lambda ys: lambda y: values_helper(ys, y, ysF, x), ysF),
+#             xi2yA(x, xs)),
+#         xs.items(),
+#         A.of(dict()))
+#     return result
 
 
 elems.length = 4
-values.length = 4
 
 
 @arityn(3)
@@ -386,13 +500,11 @@ def collect_as(xi2y, t, s):
 
     def as_fn(x, i):
         y = xi2y(x, i)
-       #print(x, i, y, t)
-        if y is not None:
+        if y is not None and not isinstance(y, Undefined):
             results.append(y)
     get_as_u(
         as_fn,
         t, s)
-   #print('results', results)
     return results
 
 
@@ -412,6 +524,11 @@ def set(o, x, s):
 
 
 @arityn(3)
+def setf(o, s, x):
+    return set_u(o, x, s)
+
+
+@arityn(3)
 def subseq(begin, end, t):
     return subseq_u(begin, end, t)
 
@@ -419,3 +536,213 @@ def subseq(begin, end, t):
 @arityn(2)
 def get(l, s):
     return get_u(l, s)
+
+
+def cpair(xs):
+    def _cpair(x):
+        return [x, xs]
+    return _cpair
+
+
+def branch_assemble(ks):
+    def _branch_assemble(xs):
+        r = {}
+        i = len(ks)
+        while (i > 0):
+            try:
+                v = xs[0]
+            except TypeError as e:
+                return xs
+            if v is not None:
+                try:
+                    r[ks[i]] = v
+                except IndexError as e:
+                    return v
+            try:
+                xs = xs[1]
+            except TypeError as e:
+                return xs
+        return r
+    return _branch_assemble
+
+
+def branch_or_1_level_identity(otherwise, k2o, x0, x, A, xi2yA):
+    written = None
+    same = True
+    r = {}
+    _k2o = I.to_dict_like(k2o) if is_list_like(k2o) else k2o
+
+    if is_list_like(k2o):
+        for k, bar in enumerate(k2o):
+            written = 1
+            # x = x0.get(k, Undefined())
+            x = x0[k]
+            y = k2o[k](x, k, A, xi2yA)
+
+            # if is_list_like(k2o):
+            # y = type(k2o)(y.values())
+            if (y is not None):
+                r[k] = y
+                if same:
+                    same = (x == y and (x != 0 or (x == 0 and y == 0))) or (
+                        x != x and y != y)
+            else:
+                same = False
+    else:
+        for k in _k2o:
+            written = 1
+            x = get_prop(k, x0)  # x0.get(k, Undefined())
+            y = k2o[k](x, k, A, xi2yA)
+            # if is_list_like(k2o):
+            # y = type(k2o)(y.values())
+            if (y is not None):
+                r[k] = y
+                if same:
+                    same = (x == y and (x != 0 or (x == 0 and y == 0))) or (
+                        x != x and y != y)
+            else:
+                same = False
+    # for k in _k2o:
+    #     written = 1
+    #     x = x0.get(k, Undefined())
+    #     print("aaaa", x, k, k2o, k2o.__class__)
+    #     y = k2o[k](x, k, A, xi2yA)
+    #     print("bbbbb", k2o.__class__, y)
+    #     if is_list_like(k2o):
+    #         y = type(k2o)(y.values())
+    #     if (y is not None):
+    #         r[k] = y
+    #         if same:
+    #             same = (x == y and (x != 0 or (x == 0 and y == 0))) or (
+    #                 x != x and y != y)
+    #     else:
+    #         same = False
+    t = written
+    for k in _iter(x0):
+        if (t is None or _k2o.get(k, None) is None):
+            written = 1
+            x = get_prop(k, x0)
+            y = otherwise(x, k, A, xi2yA)
+            if (y is not None):
+                r[k] = y
+                if same:
+                    same = (x == y and (x != 0 or (x == 0 and y == 0))) or (
+                        x != x and y != y)
+            else:
+                same = False
+    return (x if (same and x0 == x) else r) if written else x
+
+
+def branch_or_1_level(otherwise, k2o):
+    def _branch_or_1_level(x, _i, A_, xi2yA):
+        x0 = I.to_dict_like(x) if (is_list_like(
+            x) or is_dict_like(x)) else I.create(None)
+        # TODO: move all algebras to one file
+        if I.Identity == A_ or A.Identity == A_:
+            out = branch_or_1_level_identity(otherwise, k2o, x0, x, A_, xi2yA)
+            return out
+            # if is_list_like(x):
+            #     return type(x)(out)
+            # else:
+            #     return out
+        elif A.Select == A_:
+            for k in k2o:
+                y = k2o[k](x0[k], k, A_, xi2yA)
+                if y is None:
+                    return y
+            for k in x0:
+                if k2o.get(k, None) is None:
+                    y = otherwise(x0[k], k, A_, xi2yA)
+                    # if y is None:
+                    #     return y
+        else:
+            xsA = A_.of(cpair)
+            ks = []
+            for ks in k2o:
+                ks.append(k)
+                xsA = A_.ap(A_.map(cpair, xsA), k2o[k](x0[k], k, A_, xi2yA))
+            t = None if len(ks) == 0 else True
+            foo = range(len(x0)) if is_list_like(x0) else x0
+            for k in foo:
+                if (t is None or k2o[k] is None):
+                    ks.append(k)
+                    xsA = A_.ap(
+                        A_.map(cpair, xsA),
+                        otherwise(x0[k], k, A_, xi2yA))
+            return A_.map(branch_assemble(ks), xsA) if len(ks) != 0 else A_.of(x)
+    _branch_or_1_level.length = 4
+    return _branch_or_1_level
+
+
+def branch_or_u(otherwise, template):
+    k2o = I.create(template)
+    _template = range(len(template)) if is_list_like(template) else template
+    for k in _template:
+        v = template[k]
+        # len(v) !=0 needed for case when optic is an empty list
+        v2 = branch_or_u(otherwise, v) if (
+            is_dict_like(v)) else to_function(v)
+        try:
+            k2o[k] = v2
+        except IndexError:
+            k2o.append(v2)
+    out = branch_or_1_level(otherwise, k2o)
+    return out
+
+
+@arityn(2)
+def branch_or(otherwise, template):
+    otherwise = to_function(otherwise)
+    out = branch_or_u(otherwise, template)
+    a = 1
+    return out
+
+
+def zero(x, _i, C, _xi2yC):
+    return C.of(x)
+
+
+zero.length = 4
+
+branch = branch_or(zero)
+
+values = branch_or_1_level(identity, I.protoless0)
+values.length = 4
+
+
+@arityn(2)
+def remove(o, s):
+    return set_u(o, None, s)
+# remove = arityn(2)(function remove(o, s) {
+#     return setU(o, void 0, s)
+# })
+
+
+def disperse_u(traversal, values, data):
+    if not is_list_like(values):
+        values = ''
+    i = 0
+
+    def do(*args, **kwargs):
+        nonlocal i
+        # i += 1
+        v = values[i]
+        i += 1
+        return v
+    return modify_u(traversal, do, data)
+
+
+@arityn(3)
+def disperse(traversal, values, data):
+    return disperse_u(traversal, values, data)
+
+
+class Lens:
+    def __init__(self, obj):
+        self._obj = obj
+        self.set = partial(set, s=self._obj)
+        self.get = partial(get, s=self._obj)
+        self.remove = partial(remove, s=self._obj)
+        self.modify = partial(modify, s=self._obj)
+        self.collect = partial(collect, s=self._obj)
+        self.disperse = partial(disperse, data=self._obj)
