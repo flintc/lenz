@@ -1,8 +1,9 @@
 from functools import partial, reduce, wraps
 from itertools import chain, islice
 from collections import namedtuple
-from types import new_class
+from types import new_class, FunctionType
 from abc import ABCMeta
+import numpy as np
 
 
 class ListLike(metaclass=ABCMeta):
@@ -15,6 +16,15 @@ class DictLike(metaclass=ABCMeta):
 
 DictLike.register(dict)
 
+ListLike.register(np.ndarray)
+
+
+def safe_ix(ix, a):
+    try:
+        return a[ix]
+    except IndexError:
+        return None
+
 
 def arityn(n):
     def decorator(fn):
@@ -22,7 +32,6 @@ def arityn(n):
         def wrapper(*args, args_state=(), kwargs_state=dict(), **kwargs):
             args_state = args_state + args
             kwargs_state = dict(**kwargs_state, **kwargs)
-            #print(args_state, kwargs_state)
             if len(args_state)+len(kwargs_state.keys()) >= n:
                 result = fn(
                     *args_state[0:(n-len(kwargs_state.keys()))], **kwargs_state)
@@ -55,6 +64,12 @@ def pipe(operations):
 
 def register_list_like(typ):
     ListLike.register(typ)
+    return typ
+
+
+def register_dict_like(typ):
+    DictLike.register(typ)
+    return typ
 
 
 def is_list_like(x):
@@ -62,7 +77,10 @@ def is_list_like(x):
 
 
 def is_dict_like(x):
-    return isinstance(x, DictLike) or (hasattr(x, 'keys') and hasattr(x, 'values') and hasattr(x, 'items') and callable(x.values))
+    # return isinstance(x, DictLike) or (hasattr(x, 'keys') and hasattr(x, 'values') and hasattr(x, 'items') and callable(x.values))
+    is_mapping = hasattr(x, 'keys') and hasattr(
+        x, 'values') and hasattr(x, 'items') and callable(x.values)
+    return isinstance(x, DictLike) or is_mapping or (hasattr(x, "__dict__") and not isinstance(x, FunctionType))
 
 
 def to_list_like(x):
@@ -80,7 +98,6 @@ def tap(fn):
 
 
 def log_inputs(fn):
-    print('here')
     return pipe([tap(print), fn])
 
 
@@ -88,17 +105,12 @@ def fmap(f, data):
     if isinstance(data, list):
         return [f(x) for x in data]
     if is_dict_like(data):
-        print('fmap dict like', data)
-
         result = {k: f(v) for (k, v) in data.items()}
-        print('fmap dict result', result)
         return result
-    print('fmap default', data)
     return data
 
 
 def cata(f, data):
     def cata_on_f(x): return cata(f, x)
     recursed = fmap(cata_on_f, data)
-    print('cata recursed', recursed)
     return f(recursed)

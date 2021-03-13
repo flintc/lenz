@@ -6,14 +6,26 @@ from .core import (
     collect_as,
     collect,
     modify,
+    modify_u,
     set,
     get,
     pick,
     handler,
     set_u,
     subseq,
-    subseq_u
+    subseq_u,
+    branch,
+    branch_or,
+    identity,
+    remove,
+    setf,
+    disperse,
+    enable_mutability,
+    disable_mutability,
+    Lens,
+    # compose
 )
+
 from .helpers import (
     DictLike,
     register_list_like

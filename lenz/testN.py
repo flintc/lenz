@@ -20,7 +20,7 @@ def testN():
         #     })),
     ])
     result = operation(data)
-    print('result', result)
+    # print('result', result)
     assert(result == expected)
     return result
 
@@ -41,4 +41,4 @@ def testN():
 import pandas as pd
 df = pd.DataFrame(dict(a=[1, 2, 3], b=[4, 5, 6]))
 L.helpers.DictLike.register(pd.DataFrame)
-print(L.get(L.pick({'aa': 'a', 'bb': 'b'}), df))
+# print(L.get(L.pick({'aa': 'a', 'bb': 'b'}), df))

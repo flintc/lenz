@@ -1,3 +1,5 @@
+from copy import deepcopy
+from .helpers import is_list_like, is_dict_like
 
 ENV = 'dev'
 
@@ -19,7 +21,6 @@ def define_name_u(*args, **kwargs):
     try:
         return _define_name_u(_define_name_u, 'defineName')
     except Exception as e:
-        print(e)
         return lambda fn, _: fn
 
 
@@ -69,3 +70,28 @@ def apply_u(x2y, x):
 
 
 Identity = Monad(apply_u, id, apply_u, apply_u)
+
+
+def assign(a, b):
+    return dict(**a, **b)
+
+
+def create(x):
+    if is_list_like(x):
+        return []
+    else:
+        return {}
+
+
+def protoless(o):
+    return assign(create(None), o)
+
+
+protoless0 = protoless({})
+
+
+def to_dict_like(x):
+    if is_dict_like(x):
+        return deepcopy(x)
+    elif is_list_like(x):
+        return dict(enumerate(x))

@@ -73,7 +73,6 @@ class TupleM:
 
 class Identity:
     def of(x):
-        #print('Identity of', x)
         return x
 
     def ap(x2y, x):
