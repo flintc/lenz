@@ -7,6 +7,8 @@ from lenz.contract import nth_arg
 import logging
 import sys
 import numpy as np
+import pandas as pd
+from typing import Mapping, Iterable
 
 # from types import NoneType
 MUTABLE = False
@@ -50,16 +52,41 @@ def lens_from(get, set):
     return wrapper
 
 
+def mapping_get(key, data):
+    return data.get(key, Undefined())
+
+
+def mapping_set(key, value, data):
+    if value is None:
+        data.pop(key)
+    elif not isinstance(value, Undefined):
+        data[key] = value
+    return data
+
+
+def object_get(key, data):
+    return getattr(data, key)
+
+
+def object_set(key, value, data):
+    if value is None:
+        delattr(key, data)
+    elif not isinstance(value, Undefined):
+        setattr(data, key, value)
+    return data
+
+
+DICT_LIKE_LENSES = [
+    [lambda x: isinstance(x, Mapping), [mapping_get, mapping_set]],
+    [lambda x: True, [object_get, object_set]]
+]
+
+
 def get_prop(k, o):
     if is_dict_like(o):
-        try:
-            return o.get(k, Undefined())
-        except AttributeError:
-            try:
-                return getattr(o, k)
-            except AttributeError:
-                return Undefined()
-        # return o[k]
+        for cond, lens in DICT_LIKE_LENSES:
+            if cond(o):
+                return lens[0](k, o)
     return None
 
 
@@ -70,18 +97,32 @@ def set_prop(k, v, o):
         on = deepcopy(o)
     if isinstance(on, Undefined) and isinstance(k, int):
         return [v]
-    if v is None:
-        try:
-            on.pop(k)
-        except AttributeError:
-            delattr(on, k)
-    elif not isinstance(v, Undefined):
-        try:
+    if is_dict_like(o):
+        for cond, lens in DICT_LIKE_LENSES:
+            if cond(o):
+                return lens[1](k, v, on)
+    return None
 
-            on[k] = v
-        except TypeError:
-            setattr(on, k, v)
-    return on
+
+# def set_prop(k, v, o):
+#     if MUTABLE:
+#         on = o
+#     else:
+#         on = deepcopy(o)
+#     if isinstance(on, Undefined) and isinstance(k, int):
+#         return [v]
+#     if v is None:
+#         try:
+#             on.pop(k)
+#         except AttributeError:
+#             delattr(on, k)
+#     elif not isinstance(v, Undefined):
+#         try:
+
+#             on[k] = v
+#         except TypeError:
+#             setattr(on, k, v)
+#     return on
 
 
 def _iter(v):
@@ -94,18 +135,56 @@ def _iter(v):
 fun_prop = lens_from(get_prop, set_prop)
 
 
+def iterable_get(i, xs):
+    # if is_list_like(xs):
+    return xs[i]
+    # return None
+
+
+def iterable_set(k, v, o):
+    on = mapping_set(k, v, list(o))
+    return type(o)(on)
+
+
+def ndarray_set(k, v, o):
+    on = mapping_set(k, v, list(o))
+    return np.array(on)
+
+
+def df_get(k,  o):
+    return o.iloc[k]
+
+
+def df_set(k, v, o):
+    o.iloc[k] = v
+    return o
+
+
+# def df_is_same
+
+
+LIST_LIKE_LENSES = [
+    [lambda x: isinstance(x, pd.DataFrame), [df_get, df_set]],
+    [lambda x: isinstance(x, np.ndarray), [iterable_get, ndarray_set]],
+    [lambda x: isinstance(x, Iterable), [iterable_get, iterable_set]],
+    [lambda x: True, [iterable_get, iterable_set]]
+]
+
+
 def get_index(i, xs):
-    if is_list_like(xs):
-        return xs[i]
-    return None
+    for cond, lens in LIST_LIKE_LENSES:
+        if cond(xs):
+            return lens[0](i, xs)
 
 
 def set_index(k, v, o):
-    on = set_prop(k, v, list(o))
-    if not isinstance(o, np.ndarray):
-        return type(o)(on)
-    else:
-        return np.array(on)
+    for cond, lens in LIST_LIKE_LENSES:
+        if cond(o):
+            return lens[1](k, v, o)
+
+
+def is_same(a, b):
+    pass
 
 
 fun_index = lens_from(get_index, set_index)
@@ -372,6 +451,7 @@ def pick(template):
         dict -- sanitized result
     """
     def wrapper(x, i, F, xi2yF):
+        print("aaaa", F, F.map)
         out = F.map(
             lambda v: set_pick(template, v, x),
             xi2yF(get_pick(template, x), i)
@@ -442,7 +522,8 @@ def elems(xs, _i, A, xi2yA):
     j = 0
     same = True
     for i in range(n):
-        x = xs[i]
+        # x = xs[i]
+        x = get_index(i, xs)
         try:
             y = xi2yA(x, i)
         except KeyError:
@@ -451,16 +532,19 @@ def elems(xs, _i, A, xi2yA):
         if y is not None and not isinstance(y, Undefined):
             ys.append(y)
         if (same):
-
-            same = (x == y and (x != 0 or (x == 0 and y == 0))) or (
-                x != x and y != y)
+            print("aldf", x, y)
+            try:
+                same = (x == y and (x != 0 or (x == 0 and y == 0))) or (
+                    x != x and y != y)
+            except ValueError:
+                same = x.equals(y)
     if (j != n):
         for _ in range(n-j):
             ys.append(None)
     elif same:
         return xs
     else:
-        return ys
+        return type(xs)(ys)
 
 
 def elems_(xs, _i, A, xi2yA):

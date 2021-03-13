@@ -76,10 +76,14 @@ class Identity:
         return x
 
     def ap(x2y, x):
-        return x2y(x)
+        out = x2y(x)
+        print("!!!", type(x))
+        return type(x)(out)
 
     def map(x2y, x):
-        return x2y(x)
+        print("!!!", type(x))
+        out = x2y(x)
+        return out
 
 
 class First:
