@@ -66,7 +66,9 @@ class Monad(Applicative):
 
 
 def apply_u(x2y, x):
-    return x2y(x)
+    out = x2y(x)
+    print("....", type(x))
+    return out
 
 
 Identity = Monad(apply_u, id, apply_u, apply_u)
