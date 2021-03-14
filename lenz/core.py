@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 from typing import Mapping, Iterable
 
-# from types import NoneType
+# TODO: make this configurable per call rather than a global var
 MUTABLE = False
 
 
@@ -35,11 +35,6 @@ handler.setFormatter(formatter)
 logger.addHandler(handler)
 
 
-# LENSES = [
-#   [is_dict_like, lens_from(get_prop, set_prop)],
-#   [is_list_like, lens_from(get_index, set_index)],
-# ]
-
 def lens_from(get, set):
     def wrapper(i):
         def inner(x, _i, F, xi2yF):
@@ -47,6 +42,8 @@ def lens_from(get, set):
                 lambda v: set(i, v, x),
                 xi2yF(get(i, x), i)
             )
+        # TODO: make a decorator for this, figure out good name for these
+        # 4 argument functions
         inner.length = 4
         return inner
     return wrapper
@@ -104,27 +101,6 @@ def set_prop(k, v, o):
     return None
 
 
-# def set_prop(k, v, o):
-#     if MUTABLE:
-#         on = o
-#     else:
-#         on = deepcopy(o)
-#     if isinstance(on, Undefined) and isinstance(k, int):
-#         return [v]
-#     if v is None:
-#         try:
-#             on.pop(k)
-#         except AttributeError:
-#             delattr(on, k)
-#     elif not isinstance(v, Undefined):
-#         try:
-
-#             on[k] = v
-#         except TypeError:
-#             setattr(on, k, v)
-#     return on
-
-
 def _iter(v):
     try:
         return iter(v)
@@ -136,9 +112,7 @@ fun_prop = lens_from(get_prop, set_prop)
 
 
 def iterable_get(i, xs):
-    # if is_list_like(xs):
     return xs[i]
-    # return None
 
 
 def iterable_set(k, v, o):
@@ -158,9 +132,6 @@ def df_get(k,  o):
 def df_set(k, v, o):
     o.iloc[k] = v
     return o
-
-
-# def df_is_same
 
 
 LIST_LIKE_LENSES = [
@@ -223,7 +194,6 @@ def to_function(o):
         return fun_index(o)
     if is_list_like(o):
         return composed(0, o)
-    # return o  # if (hasattr(o, '__len__') and len(o) == 4) else from_reader(o)
     return o if (hasattr(o, 'length') and o.length == 4) else from_reader(o)
 
 
@@ -232,9 +202,6 @@ def composed(oi0, os):
     logger.debug(
         '[{}] - len(os): {} - oi0: {}'.format('composed', len(os), oi0))
     if n < 2:
-        # if n==1 and oi0==1:
-        #    return identity
-
         if n != 0:
             return to_function(os[oi0])
         return identity
@@ -275,15 +242,6 @@ def modify_composed(os, xi2y, x, y=None):
         if callable(safe_ix(n, os)):
             n -= 1
             continue
-            # pass
-        # if isinstance(safe_ix(n,os), str):
-        #     if is_dict_like(xs[n]):
-        #          x = set_prop(os[n], x, xs[n])
-        #     else:
-        #         x = set_index(os[n], x, xs[n])
-        # else:
-        #     if is_dict_like(xs[n]):
-        #         x =
         x = set_prop(os[n], x, xs[n]) if isinstance(
             safe_ix(n, os), str) else set_index(safe_ix(n, os), x, xs[n])
         n -= 1
@@ -359,7 +317,6 @@ def maybe_reader(fn):
 
 
 def get_as_u(xi2y, l, s):
-    # xi2y = maybe_reader(xi2y)
     if isinstance(l, str):
         return xi2y(get_prop(l, s), l)
     if isinstance(l, int):
@@ -368,6 +325,7 @@ def get_as_u(xi2y, l, s):
         n = len(l)
         logger.debug('[{}] - l: {} - s: {}'.format('get_as_us', l, s))
         # TODO: find permanent solution for when optic is empty list: []
+        # update: I think I fixed this in another function w/ similar logic
         if n == 0:
 
             return s
@@ -396,7 +354,6 @@ def get_pick(template, x):
     r = {}
     for k in template.keys():
         t = template[k]
-        # v = get_pick(t, x) if is_dict_like(t) else get_as_u(id_, t, x)
         if is_dict_like(t):
             v = get_pick(t, x)
         else:
@@ -451,7 +408,6 @@ def pick(template):
         dict -- sanitized result
     """
     def wrapper(x, i, F, xi2yF):
-        print("aaaa", F, F.map)
         out = F.map(
             lambda v: set_pick(template, v, x),
             xi2yF(get_pick(template, x), i)
@@ -487,42 +443,12 @@ def subseq_u(begin, end, t):
     return wrapper
 
 
-# def elems(xs, _i, A, xi2yA):
-#     result = reduce(
-#         lambda ysF, x: A.ap(
-#             A.map(
-#                 lambda ys: lambda y: [*ys, y], ysF),
-#             xi2yA(x, xs)),
-#         xs,
-#         A.of([]))
-#     return result
-
-def tmp(*args):
-    return args
-
-
-def boo(A, xi2yA):
-    def _boo(ysF, x):
-        try:
-            foo = xi2yA(*reversed(x))
-        except Exception as e:
-            return [x[1]]
-        out = A.ap(
-            A.map(
-                lambda ys: lambda y: [*ys, y], ysF),
-            foo
-        )
-        return out
-    return _boo
-
-
 def elems(xs, _i, A, xi2yA):
     n = len(xs) if is_list_like(xs) else 0
     ys = []
     j = 0
     same = True
     for i in range(n):
-        # x = xs[i]
         x = get_index(i, xs)
         try:
             y = xi2yA(x, i)
@@ -532,7 +458,6 @@ def elems(xs, _i, A, xi2yA):
         if y is not None and not isinstance(y, Undefined):
             ys.append(y)
         if (same):
-            print("aldf", x, y)
             try:
                 same = (x == y and (x != 0 or (x == 0 and y == 0))) or (
                     x != x and y != y)
@@ -547,32 +472,12 @@ def elems(xs, _i, A, xi2yA):
         return type(xs)(ys)
 
 
-def elems_(xs, _i, A, xi2yA):
-    result = reduce(
-        boo(A, xi2yA),
-        enumerate(xs),
-        A.of([]))
-    return result
-
-
 def get_values(ys):
     return ys.values()
 
 
 def values_helper(ys, y, ysF, x):
     pass
-
-
-# def values(xs, _i, A, xi2yA):
-#    # print('values', _i, A, xs, xi2yA)
-#     result = reduce(
-#         lambda ysF, x: A.ap(
-#             A.map(
-#                 lambda ys: lambda y: values_helper(ys, y, ysF, x), ysF),
-#             xi2yA(x, xs)),
-#         xs.items(),
-#         A.of(dict()))
-#     return result
 
 
 elems.length = 4
@@ -655,52 +560,17 @@ def branch_or_1_level_identity(otherwise, k2o, x0, x, A, xi2yA):
     same = True
     r = {}
     _k2o = I.to_dict_like(k2o) if is_list_like(k2o) else k2o
-
-    if is_list_like(k2o):
-        for k, bar in enumerate(k2o):
-            written = 1
-            # x = x0.get(k, Undefined())
-            x = x0[k]
-            y = k2o[k](x, k, A, xi2yA)
-
-            # if is_list_like(k2o):
-            # y = type(k2o)(y.values())
-            if (y is not None):
-                r[k] = y
-                if same:
-                    same = (x == y and (x != 0 or (x == 0 and y == 0))) or (
-                        x != x and y != y)
-            else:
-                same = False
-    else:
-        for k in _k2o:
-            written = 1
-            x = get_prop(k, x0)  # x0.get(k, Undefined())
-            y = k2o[k](x, k, A, xi2yA)
-            # if is_list_like(k2o):
-            # y = type(k2o)(y.values())
-            if (y is not None):
-                r[k] = y
-                if same:
-                    same = (x == y and (x != 0 or (x == 0 and y == 0))) or (
-                        x != x and y != y)
-            else:
-                same = False
-    # for k in _k2o:
-    #     written = 1
-    #     x = x0.get(k, Undefined())
-    #     print("aaaa", x, k, k2o, k2o.__class__)
-    #     y = k2o[k](x, k, A, xi2yA)
-    #     print("bbbbb", k2o.__class__, y)
-    #     if is_list_like(k2o):
-    #         y = type(k2o)(y.values())
-    #     if (y is not None):
-    #         r[k] = y
-    #         if same:
-    #             same = (x == y and (x != 0 or (x == 0 and y == 0))) or (
-    #                 x != x and y != y)
-    #     else:
-    #         same = False
+    for k in _k2o:
+        written = 1
+        x = get_prop(k, x0)  # x0.get(k, Undefined())
+        y = k2o[k](x, k, A, xi2yA)
+        if (y is not None):
+            r[k] = y
+            if same:
+                same = (x == y and (x != 0 or (x == 0 and y == 0))) or (
+                    x != x and y != y)
+        else:
+            same = False
     t = written
     for k in _iter(x0):
         if (t is None or _k2o.get(k, None) is None):
@@ -725,10 +595,6 @@ def branch_or_1_level(otherwise, k2o):
         if I.Identity == A_ or A.Identity == A_:
             out = branch_or_1_level_identity(otherwise, k2o, x0, x, A_, xi2yA)
             return out
-            # if is_list_like(x):
-            #     return type(x)(out)
-            # else:
-            #     return out
         elif A.Select == A_:
             for k in k2o:
                 y = k2o[k](x0[k], k, A_, xi2yA)
@@ -737,8 +603,6 @@ def branch_or_1_level(otherwise, k2o):
             for k in x0:
                 if k2o.get(k, None) is None:
                     y = otherwise(x0[k], k, A_, xi2yA)
-                    # if y is None:
-                    #     return y
         else:
             xsA = A_.of(cpair)
             ks = []
@@ -799,7 +663,6 @@ def children(x, i, C, xi2yC):
         return elems(x, i, C, xi2yC)
     if is_dict_like(x):
         return values(x, i, C, xi2yC)
-        #raise NotImplementedError('Not ready for dict like')
     return C.of(x)
 
 
@@ -823,9 +686,6 @@ def reread(xi2x):
 @arityn(2)
 def remove(o, s):
     return set_u(o, None, s)
-# remove = arityn(2)(function remove(o, s) {
-#     return setU(o, void 0, s)
-# })
 
 
 def disperse_u(traversal, values, data):
@@ -835,7 +695,6 @@ def disperse_u(traversal, values, data):
 
     def do(*args, **kwargs):
         nonlocal i
-        # i += 1
         v = values[i]
         i += 1
         return v
@@ -876,7 +735,6 @@ def all_(xi2b, t, s):
 
 
 def iso_u(bwd, fwd):
-    # @arityn(4)
     def iso_u_wrapper(x, i, F, xi2yF):
         return F.map(fwd, xi2yF(bwd(x), i))
     iso_u_wrapper.length = 4
@@ -915,7 +773,6 @@ when = either_u(identity, zero)
 
 
 def do(fn, *args, **kwargs):
-    # return partial(maybe_reader(fn), *args, **kwargs)
     def wrapper(data, ix):
         try:
             return fn(data, ix, *args, **kwargs)
