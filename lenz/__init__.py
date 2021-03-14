@@ -22,10 +22,23 @@ from .core import (
     disperse,
     enable_mutability,
     disable_mutability,
+    rewrite,
+    reread,
+    children,
+    find,
+    satisfying,
+    leafs,
+    all_,
+    and_,
+    any_,
+    or_,
+    where_eq,
+    when,
+    do,
+    props,
     Lens,
     # compose
 )
-
 from .helpers import (
     DictLike,
     register_list_like

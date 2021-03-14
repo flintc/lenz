@@ -794,6 +794,32 @@ values = branch_or_1_level(identity, I.protoless0)
 values.length = 4
 
 
+def children(x, i, C, xi2yC):
+    if is_list_like(x):
+        return elems(x, i, C, xi2yC)
+    if is_dict_like(x):
+        return values(x, i, C, xi2yC)
+        #raise NotImplementedError('Not ready for dict like')
+    return C.of(x)
+
+
+children.length = 4
+
+
+def rewrite(yi2y):
+    def rewrite_wrapper(x, i, F, xi2yF):
+        return F.map(lambda y: nth_arg(0, yi2y)(y, i) if y is not None else y, xi2yF(x, i))
+    rewrite_wrapper.length = 4
+    return rewrite_wrapper
+
+
+def reread(xi2x):
+    def reread_wrapper(x, i, _F, xi2yF):
+        return xi2yF(nth_arg(0, xi2x)(x, i) if x is not None else x, i)
+    reread_wrapper.length = 4
+    return reread_wrapper
+
+
 @arityn(2)
 def remove(o, s):
     return set_u(o, None, s)
@@ -816,9 +842,111 @@ def disperse_u(traversal, values, data):
     return modify_u(traversal, do, data)
 
 
+def find(xih2b, hint={'hint': 0}):
+    xih2b = nth_arg(0, xih2b)
+
+    def find_wrapper(xs, _i, F, xi2yF):
+        logger.critical('[find_wrapper] - {}, {}'.format(xs, is_list_like(xs)))
+        ys = xs if is_list_like(xs) else ''
+        hint['hint'] = find_index_hint(hint, xih2b, ys)
+        i = hint['hint']
+        return F.map(lambda v: set_index(i, v, ys), xi2yF(ys[i], i))
+    find_wrapper.length = 4
+    return find_wrapper
+
+
+def satisfying(p):
+    def satisfying_wrapper(x, i, C, xi2yC):
+        def rec(x, i):
+            if nth_arg(0, p)(x, i):
+                return xi2yC(x, i)
+            return children(x, i, C, rec)
+        return rec(x, i)
+    satisfying_wrapper.length = 4
+    return satisfying_wrapper
+
+
+leafs = satisfying(lambda x, *args: x is not None and not is_list_like(
+    x) and not is_dict_like(x))
+
+
+@arityn(3)
+def all_(xi2b, t, s):
+    return not get_as_u(lambda x, i: True if not nth_arg(0, xi2b)(x, i) else None, t, s)
+
+
+def iso_u(bwd, fwd):
+    # @arityn(4)
+    def iso_u_wrapper(x, i, F, xi2yF):
+        return F.map(fwd, xi2yF(bwd(x), i))
+    iso_u_wrapper.length = 4
+    return iso_u_wrapper
+
+
+def _compare(x, y):
+    logger.critical('[_compare] - {} == {} ? {}'.format(x, y, x == y))
+    return x == y
+
+
+def is_(v):
+    logger.critical('[is_] - {}'.format(v))
+    return iso_u(lambda x: _compare(x, v), lambda b: v if b is True else None)
+
+
+and_ = all_(id)
+
+
+def where_eq(template): return satisfying(
+    and_(branch(modify(leafs, is_, template))))
+
+
+def either_u(t, e):
+    def wrapper(c):
+        def inner(x, i, C, xi2yC):
+            fn = t if maybe_reader(c)(x, i) else e
+            return fn(x, i, C, xi2yC)
+        inner.length = 4
+        return inner
+
+    return wrapper
+
+
+when = either_u(identity, zero)
+
+
+def do(fn, *args, **kwargs):
+    # return partial(maybe_reader(fn), *args, **kwargs)
+    def wrapper(data, ix):
+        try:
+            return fn(data, ix, *args, **kwargs)
+        except TypeError:
+            return fn(data, *args, **kwargs)
+    return wrapper
+
+
 @arityn(3)
 def disperse(traversal, values, data):
     return disperse_u(traversal, values, data)
+
+
+@arityn(3)
+def any_(xi2b, t, s):
+    def wrapper(x, i):
+        if xi2b(x, i):
+            return True
+    out = get_as_u(wrapper, t, s)
+    return False if out is None or isinstance(out, Undefined) else out
+
+
+or_ = any_(id_)
+
+
+def props(*args):
+    n = len(args)
+    template = {}
+    for i in range(n):
+        template[args[i]] = args[i]
+    return pick(template)
 
 
 class Lens:

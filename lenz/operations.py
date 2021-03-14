@@ -52,3 +52,8 @@ def add(x, y):
 @H.arityn(1)
 def identity(x):
     return x
+
+
+@H.arityn(2)
+def is_(cls, x):
+    return isinstance(x, cls)

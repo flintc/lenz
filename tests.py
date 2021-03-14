@@ -50,6 +50,9 @@ def assert_eq(test, expected):
     return test_assert_eq
 
 
+testEq = assert_eq
+
+
 compose_test = [
     assert_eq(lambda: L.get(L.compose(), 'any'), 'any'),
     assert_eq(lambda: L.compose('x'), 'x'),
@@ -157,9 +160,52 @@ rewrite_tests = [
 ]
 
 
-# @pytest.mark.parametrize("run_test", rewrite_tests)
-# def test_find(run_test):
-#     run_test()
+@pytest.mark.parametrize("run_test", rewrite_tests)
+def test_rewrite(run_test):
+    run_test()
+
+
+reread_tests = [
+    testEq(
+        lambda:
+        L.get(
+            L.reread(lambda x: x - 1),
+            1
+        ),
+        0
+    ),
+    testEq(
+        lambda:
+        L.get(
+            L.reread(lambda x: x - 1),
+            None
+        ),
+        None
+    ),
+    testEq(
+        lambda:
+        L.set(
+            L.reread(lambda x: x - 1),
+            None,
+            1
+        ),
+        None
+    ),
+    testEq(
+        lambda:
+        L.set(
+            L.reread(lambda x: x - 1),
+            3,
+            1
+        ),
+        3
+    )
+]
+
+
+@pytest.mark.parametrize("run_test", reread_tests)
+def test_reread(run_test):
+    run_test()
 
 
 elems_tests = [
@@ -234,15 +280,15 @@ values_tests = [
     assert_eq(lambda: L.modify(L.values, R.inc, [1, 2]), {0: 2, 1: 3}),
     assert_eq(lambda: L.modify(L.values, R.negate, {
               'x': 11, 'y': 22}), {'x': -11, 'y': -22}),
-    # assert_eq(
-    #     lambda:
-    #     L.remove([L.values, L.when(lambda x: 11 < x & x < 33)], {
-    #         'x': 11,
-    #         'y': 22,
-    #         'z': 33
-    #     }),
-    #     {'x': 11, 'z': 33}
-    # ),
+    assert_eq(
+        lambda:
+        L.remove([L.values, L.when(lambda x: 11 < x & x < 33)], {
+            'x': 11,
+            'y': 22,
+            'z': 33
+        }),
+        {'x': 11, 'z': 33}
+    ),
     assert_eq(lambda: L.remove(L.values, {'x': 11, 'y': 22, 'z': 33}), {}),
     assert_eq(lambda: L.modify(L.values, R.inc, {}), {}),
     assert_eq(lambda: L.remove(L.values, {'x': 1}), {}),
@@ -298,7 +344,8 @@ branch_tests = [
         'y': 2,
         'z': 4
     }),
-    # assert_eq(lambda: L.or(L.branch({'x': [], 'y': []}), {'x': false, 'y': false}), false),
+    assert_eq(lambda: L.or_(L.branch({'x': [], 'y': []}), {
+              'x': False, 'y': False}), False),
     assert_eq(
         lambda: L.modify(L.branch({'x': {'a': []}, 'y': []}), R.negate, {
                          'x': {'a': 1}, 'y': 2}),
@@ -474,4 +521,188 @@ custom_tests = [
 
 @pytest.mark.parametrize("run_test", custom_tests)
 def test_custom(run_test):
+    run_test()
+
+
+when_tests = [
+    testEq(
+        lambda:
+        L.get(
+            L.when(lambda x: x > 2),
+            1
+        ),
+        None
+    ),
+    testEq(lambda: L.get([L.when(lambda x: x > 2), I.always(2)], 1), None),
+    testEq(
+        lambda:
+        L.get(
+            L.when(lambda x: x > 2),
+            3
+        ),
+        3
+    ),
+    testEq(lambda: L.collect(
+        [L.elems, L.when(lambda x: x > 2)], [1, 3, 2, 4]), [3, 4]),
+    testEq(
+        lambda: L.modify([L.elems, L.when(lambda x: x > 2)],
+                         R.negate, [1, 3, 2, 4]),
+        [1, -3, 2, -4]
+    )
+]
+
+
+@pytest.mark.parametrize("run_test", when_tests)
+def test_when(run_test):
+    run_test()
+
+
+satisfying_tests = [
+    testEq(lambda: L.collect(L.satisfying(R.is_(int)), [3, '1', 4, {'x': 1}]), [
+        3,
+        4,
+        1,
+    ])
+]
+
+
+@pytest.mark.parametrize("run_test", satisfying_tests)
+def test_satisfying(run_test):
+    run_test()
+
+
+where_eq_tests = [
+    testEq(
+        lambda:
+        L.collect(L.where_eq({'type': 'foo'}), [
+            {'type': 'foo', 'children': [{'type': 'foo'}]},
+            {'type': 'bar', 'children': [{'type': 'foo', 'value': 'bar'}]},
+        ]),
+        [
+            {'type': 'foo', 'children': [{'type': 'foo'}]},
+            {'type': 'foo', 'value': 'bar'},
+        ]
+    )
+]
+
+
+@pytest.mark.parametrize("run_test", where_eq_tests)
+def test_where_eq(run_test):
+    run_test()
+
+
+leafs_tests = [
+    testEq(lambda: L.collect(L.leafs, 101), [101]),
+    testEq(lambda: L.collect(L.leafs, XYZ(1, 2, 3)), [XYZ(1, 2, 3)]),
+    testEq(lambda: L.collect(L.leafs, [['x'], [1, [], {'y': 2}], [[False]]]), [
+        'x',
+        1,
+        2,
+        False,
+    ]),
+    testEq(lambda: L.set(L.leafs, 1, None), None),
+    testEq(lambda: L.set(L.leafs, 1, 'defined'), 1)
+]
+
+
+@pytest.mark.parametrize("run_test", leafs_tests)
+def test_leafs(run_test):
+    run_test()
+
+
+# const flatten = [
+#     L.optional,
+#     L.lazy((rec)=>
+#            L.cond(
+#         [R.is(Array), [L.elems, rec]],
+#         [R.is(Object), [L.values, rec]],
+#         [L.identity]
+#     )
+#     ),
+# ]
+
+lazy_folds_tests = [
+    testEq(lambda: L.get([L.elems, 'y'], [{'x': 1}, {'y': 2}, {'z': 3}]), 2),
+    # testEq(lambda: L.get(flatten, [[[[[[[[[[101]]]]]]]]]]), 101),
+    testEq(lambda: L.get(L.elems, []), None),
+    testEq(lambda: L.get(L.values, {}), None),
+    # testEq(
+    #     lambda:
+    #     L.getAs((x, i)=> (x > 3 ? [x + 2, i]: None), L.elems, [
+    #         3,
+    #         1,
+    #         4,
+    #         1,
+    #         5,
+    #     ]),
+    #     [6, 2]
+    # ),
+    # testEq(
+    #     lambda:
+    #     L.getAs((x, i)=> (x > 3 ? [x + 2, i]: None), L.values, {
+    #         a: 3,
+    #         b: 1,
+    #         c: 4,
+    #         d: 1,
+    #         e: 5,
+    #     }),
+    #     [6, 'c']
+    # ),
+    # testEq(lambda: L.getAs((_)= > {}, L.values, {x: 1}), None),
+    # testEq(
+    #     lambda:
+    #     L.getAs(lambda x: (x < 9 ? None: [x]), flatten, [
+    #         [[1], 2],
+    #         {y: 3},
+    #         [{l: 41, r: [5]}, {x: 6}],
+    #     ]),
+    #     [41]
+    # ),
+    testEq(lambda: L.any_(lambda x, i: x > i, L.elems, [0, 1, 3]), True),
+    testEq(lambda: L.any_(lambda x, i: x > i, L.elems, [0, 1, 2]), False),
+    testEq(lambda: L.all_(lambda x, i: x > i, L.elems, [1, 2, 3]), True),
+    testEq(lambda: L.all_(lambda x, i: x > i, L.elems, [1, 2, 2]), False),
+    # testEq(lambda: L.all1(lambda x, i: x > i, L.elems, [1, 2, 3]), True),
+    # testEq(lambda: L.all1(lambda x, i: x > i, L.elems, []), False),
+    # testEq(lambda: L.none(lambda x, i: x > i, L.elems, [0, 1, 3]), False),
+    # testEq(lambda: L.none(lambda x, i: x > i, L.elems, [0, 1, 2]), True),
+    testEq(lambda: L.and_(L.elems, []), True),
+    # testEq(lambda: L.and1(L.elems, [1]), True),
+    # testEq(lambda: L.and1(L.elems, [1, 0]), False),
+    # testEq(lambda: L.and1(L.elems, []), False),
+    testEq(lambda: L.or_(L.elems, []), False),
+]
+
+
+@pytest.mark.parametrize("run_test", lazy_folds_tests)
+def test_lazy_folds(run_test):
+    run_test()
+
+
+props_tests = [
+    testEq(lambda: L.get(L.props('x', 'y'), {
+           'x': 1, 'y': 2, 'z': 3}), {'x': 1, 'y': 2}),
+    testEq(lambda: L.get(L.props('x', 'y'), {'z': 3}), None),
+    testEq(lambda: L.get(L.props('x', 'y'), {'x': 2, 'z': 3}), {'x': 2}),
+    testEq(lambda: L.remove(L.props('x', 'y'), {
+           'x': 1, 'y': 2, 'z': 3}), {'z': 3}),
+    testEq(lambda: L.set(L.props('x', 'y'), {},
+                         {'x': 1, 'y': 2, 'z': 3}), {'z': 3}),
+    testEq(lambda: L.set(L.props('x', 'y'), {'y': 4}, {'x': 1, 'y': 2, 'z': 3}), {
+        'y': 4,
+        'z': 3,
+    }),
+    testEq(lambda: L.remove(L.props('x', 'y'), {'x': 1, 'y': 2}), {}),
+    testEq(lambda: L.set(L.props('a', 'b'), {
+           'a': 2}, {'a': 1, 'b': 3}), {'a': 2}),
+    # testEq(lambda: I.keys(L.get(L.props('x', 'b', 'y'), {'b': 1, 'y': 1, 'x': 1})), [
+    #     'x',
+    #     'b',
+    #     'y',
+    # ]),
+]
+
+
+@pytest.mark.parametrize("run_test", props_tests)
+def test_props(run_test):
     run_test()
