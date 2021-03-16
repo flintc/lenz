@@ -29,18 +29,15 @@ def pipe(*fns):
 
 @H.arityn(1)
 def negate(x):
-    # print("????", x)
     return -1*x
 
 
 # @H.arityn(1)
 def inc(x, *args):
-    # print("????", x)
     return x+1
 
 
 def dec(x, *args):
-    # print("????", x)
     return x-1
 
 

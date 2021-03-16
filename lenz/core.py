@@ -297,7 +297,10 @@ def modify_op(xi2y):
 
 def set_pick(template, value, x):
     for k in template:
-        v = value[k] if k in value.keys() else None
+        try:
+            v = value[k] if k in value.keys() else None
+        except AttributeError:
+            v = None
         t = template[k]
         x = set_pick(t, v, x) if is_dict_like(t) else set_u(t, v, x)
     return x
@@ -327,7 +330,6 @@ def get_as_u(xi2y, l, s):
         # TODO: find permanent solution for when optic is empty list: []
         # update: I think I fixed this in another function w/ similar logic
         if n == 0:
-
             return s
         for i in range(0, n):
             if isinstance(l[i], str):
@@ -414,6 +416,8 @@ def pick(template):
         )
         # handle case where all keys in pick don't exist in data
         if (is_dict_like(out)):
+            if len(out) == 0:
+                return {}
             if all(isinstance(x, Undefined) for x in out.values()):
                 return None
             else:
@@ -443,7 +447,14 @@ def subseq_u(begin, end, t):
     return wrapper
 
 
-def elems(xs, _i, A, xi2yA):
+def select_in_array_like(xi2v, xs):
+    for i in range(len(xs)):
+        v = xi2v(xs[i], i)
+        if v is not None and not isinstance(v, Undefined):
+            return v
+
+
+def map_partial_index_u(xi2yA, xs, skip):
     n = len(xs) if is_list_like(xs) else 0
     ys = []
     j = 0
@@ -470,6 +481,24 @@ def elems(xs, _i, A, xi2yA):
         return xs
     else:
         return type(xs)(ys)
+
+
+def elems_i(xs, _i, A_, xi2yA):
+    if (A_ == A.Identity):
+        return map_partial_index_u(xi2yA, xs, None)
+    elif A_ == A.Select:
+        return select_in_array_like(xi2yA, xs)
+    else:
+        # TODO: implement traverse_partial_index
+        raise NotImplementedError(
+            "Not yet implemented for algebras not in [Identity, Select]")
+
+
+def elems(xs, i, A, xi2yA):
+    if is_list_like(xs):
+        return elems_i(xs, i, A,  xi2yA)
+    else:
+        return A.of(xs)
 
 
 def get_values(ys):
@@ -597,12 +626,15 @@ def branch_or_1_level(otherwise, k2o):
             return out
         elif A.Select == A_:
             for k in k2o:
-                y = k2o[k](x0[k], k, A_, xi2yA)
-                if y is None:
+                y = k2o[k](
+                    x0.get(k, Undefined()), k, A_, xi2yA)
+                if y is not None:
                     return y
             for k in x0:
                 if k2o.get(k, None) is None:
                     y = otherwise(x0[k], k, A_, xi2yA)
+                    if y is not None:
+                        return y
         else:
             xsA = A_.of(cpair)
             ks = []
@@ -660,9 +692,11 @@ values.length = 4
 
 def children(x, i, C, xi2yC):
     if is_list_like(x):
-        return elems(x, i, C, xi2yC)
+        elems_i_out = elems_i(x, i, C, xi2yC)
+        return elems_i_out
     if is_dict_like(x):
-        return values(x, i, C, xi2yC)
+        values_out = values(x, i, C, xi2yC)
+        return values_out
     return C.of(x)
 
 
@@ -671,14 +705,14 @@ children.length = 4
 
 def rewrite(yi2y):
     def rewrite_wrapper(x, i, F, xi2yF):
-        return F.map(lambda y: nth_arg(0, yi2y)(y, i) if y is not None else y, xi2yF(x, i))
+        return F.map(lambda y: maybe_reader(yi2y)(y, i) if y is not None else y, xi2yF(x, i))
     rewrite_wrapper.length = 4
     return rewrite_wrapper
 
 
 def reread(xi2x):
     def reread_wrapper(x, i, _F, xi2yF):
-        return xi2yF(nth_arg(0, xi2x)(x, i) if x is not None else x, i)
+        return xi2yF(maybe_reader(xi2x)(x, i) if x is not None else x, i)
     reread_wrapper.length = 4
     return reread_wrapper
 
@@ -702,7 +736,7 @@ def disperse_u(traversal, values, data):
 
 
 def find(xih2b, hint={'hint': 0}):
-    xih2b = nth_arg(0, xih2b)
+    xih2b = maybe_reader(xih2b)
 
     def find_wrapper(xs, _i, F, xi2yF):
         logger.critical('[find_wrapper] - {}, {}'.format(xs, is_list_like(xs)))
@@ -717,10 +751,15 @@ def find(xih2b, hint={'hint': 0}):
 def satisfying(p):
     def satisfying_wrapper(x, i, C, xi2yC):
         def rec(x, i):
-            if nth_arg(0, p)(x, i):
-                return xi2yC(x, i)
-            return children(x, i, C, rec)
-        return rec(x, i)
+            cond = nth_arg(0, p)(x, i)
+            if cond:
+                res = xi2yC(x, i)
+                return res
+            else:
+                res2 = children(x, i, C, rec)
+                return res2
+        out = rec(x, i)
+        return out
     satisfying_wrapper.length = 4
     return satisfying_wrapper
 
@@ -731,7 +770,7 @@ leafs = satisfying(lambda x, *args: x is not None and not is_list_like(
 
 @arityn(3)
 def all_(xi2b, t, s):
-    return not get_as_u(lambda x, i: True if not nth_arg(0, xi2b)(x, i) else None, t, s)
+    return not get_as_u(lambda x, i: True if not maybe_reader(xi2b)(x, i) else None, t, s)
 
 
 def iso_u(bwd, fwd):
@@ -751,7 +790,7 @@ def is_(v):
     return iso_u(lambda x: _compare(x, v), lambda b: v if b is True else None)
 
 
-and_ = all_(id)
+and_ = all_(id_)
 
 
 def where_eq(template): return satisfying(
