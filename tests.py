@@ -601,7 +601,19 @@ leafs_tests = [
         False,
     ]),
     testEq(lambda: L.set(L.leafs, 1, None), None),
-    testEq(lambda: L.set(L.leafs, 1, 'defined'), 1)
+    testEq(lambda: L.set(L.leafs, 1, 'defined'), 1),
+    testEq(lambda: L.collect(L.leafs, [{
+        'key': 3,
+        'value': 'a',
+        'lhs': {'key': 1, 'value': 'r'},
+        'rhs': {'key': 2, 'value': 'd'}
+    }, {'key': 4}]), [3, 'a', 1, 'r', 2, 'd', 4]),
+    testEq(lambda: L.get(L.leafs, [{
+        'key': 3,
+        'value': 'a',
+        'lhs': {'key': 1, 'value': 'r'},
+        'rhs': {'key': 2, 'value': 'd'}
+    }, {'key': 4}]), 3),
 ]
 
 

@@ -1,0 +1,6 @@
+.vscode
+.ipynb_checkpoints
+*.egg*
+__pycache__
+.pytest_cache
+.coverage

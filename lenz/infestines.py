@@ -67,7 +67,6 @@ class Monad(Applicative):
 
 def apply_u(x2y, x):
     out = x2y(x)
-    print("....", type(x))
     return out
 
 

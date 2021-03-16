@@ -2,9 +2,19 @@
 from lenz.helpers import always, snd_u
 
 
+def logger(fn):
+    def wrapper(*args):
+        out = fn(*args)
+        print(f"LOGGER: {fn.__name__} out", out)
+        return out
+    return wrapper
+
+
 class Applicative:
     def __init__(self, map, of, ap):
+        # self.call = logger(map)
         self.call = map
+        # self.of = logger(of)
         self.of = of
         self.ap = ap
         self.map = map
@@ -18,7 +28,14 @@ class Constant:
 def ConstantWith(ap, empty=None): return Applicative(snd_u, always(empty), ap)
 
 
-Select = ConstantWith(lambda l, r: l if l is not None else r)
+def foo(l, r):
+    if l is not None:
+        return l
+    return r
+
+
+Select = ConstantWith(foo)
+Select.__name__ = "Select"
 
 
 class Pair:
@@ -77,11 +94,9 @@ class Identity:
 
     def ap(x2y, x):
         out = x2y(x)
-        print("!!!", type(x))
         return type(x)(out)
 
     def map(x2y, x):
-        print("!!!", type(x))
         out = x2y(x)
         return out
 
